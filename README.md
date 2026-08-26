@@ -63,6 +63,15 @@ python scripts/skrl/train.py --task=Isaac-Dual-Arm-v0 --num_envs=4096
 - `--max_iterations=1000`: Set the maximum number of training iterations.
 - `--seed=42`: Set a random seed for reproducibility.
 
+### Tracking Progress with TensorBoard
+
+Training logs and model checkpoints are automatically saved in the `logs/` directory. You can monitor the training progress (e.g., rewards, episode length, losses) using TensorBoard.
+
+```bash
+tensorboard --logdir=logs
+```
+Then, open your web browser and navigate to `http://localhost:6006`.
+
 ## Evaluation
 
 To play/evaluate a trained model, run the following command:
@@ -142,6 +151,15 @@ python scripts/skrl/train.py --task=Isaac-Dual-Arm-v0 --num_envs=4096
 - `--video`: 훈련 중 시뮬레이션 영상을 녹화합니다.
 - `--max_iterations=1000`: 최대 훈련 반복(iteration) 횟수를 지정합니다.
 - `--seed=42`: 실험 재현성을 위해 난수 시드(seed)를 고정합니다.
+
+### 텐서보드(TensorBoard)로 학습 진행 상황 확인하기
+
+학습 로그와 모델 체크포인트는 자동으로 `logs/` 폴더에 저장됩니다. 텐서보드를 사용하면 훈련 진행 상황(보상, 에피소드 길이, 손실 등)을 시각적으로 모니터링할 수 있습니다.
+
+```bash
+tensorboard --logdir=logs
+```
+명령어를 실행한 후 웹 브라우저에서 `http://localhost:6006`에 접속하세요.
 
 ## 평가 방법 (Evaluation)
 
