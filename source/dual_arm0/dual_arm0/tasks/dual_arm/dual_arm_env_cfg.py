@@ -39,12 +39,12 @@ class DualArmSceneCfg(InteractiveSceneCfg):
     # object to manipulate (cylinder) (조작할 대상 물체인 원기둥 설정)
     object = RigidObjectCfg(
         prim_path="{ENV_REGEX_NS}/Object", # 물체가 생성될 경로
-        init_state=RigidObjectCfg.InitialStateCfg(pos=(0.5, 0.0, 0.05), rot=(1.0, 0.0, 0.0, 0.0)), # 초기 위치 및 회전값 (x=0.5, y=0.0, z=0.05)
-        spawn=sim_utils.CylinderCfg(
-            radius=0.025, # 원기둥 반지름
-            height=0.1, # 원기둥 높이
+        # 누워있는 상태: Y축 기준 90도 회전 (w=0.7071, y=0.7071), 중심 높이는 두께(0.04)의 절반인 0.02
+        init_state=RigidObjectCfg.InitialStateCfg(pos=(0.5, 0.0, 0.02), rot=(0.7071, 0.0, 0.7071, 0.0)), 
+        spawn=sim_utils.CuboidCfg(
+            size=(0.04, 0.04, 0.1), # 가로 4cm, 세로 4cm, 높이 10cm의 직육면체 (원기둥 대신 굴러가지 않게 함)
             rigid_props=sim_utils.RigidBodyPropertiesCfg(), # 강체 물리 속성 활성화
-            mass_props=sim_utils.MassPropertiesCfg(mass=0.1), # 질량을 0.1kg으로 설정
+            mass_props=sim_utils.MassPropertiesCfg(mass=1.0), # 부딪혀서 날아가지 않게 질량을 1.0kg으로 10배 무겁게 설정
             collision_props=sim_utils.CollisionPropertiesCfg(), # 충돌 속성 활성화
             visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.0, 1.0, 0.0)), # 초록색으로 렌더링되도록 색상 지정
         ),
@@ -149,7 +149,8 @@ class EventCfg:
         func=mdp.reset_root_state_uniform,
         mode="reset",
         params={
-            "pose_range": {"x": (0.1, 0.2), "y": (-0.4, -0.2), "z": (0.00, 0.00)},
+            # 큐브의 기본 회전이 Y축 90도(눕혀짐)이므로, 로컬 X축(roll)을 돌려야 월드 Z축(yaw, 팽이처럼 회전) 기준으로 회전합니다.
+            "pose_range": {"x": (0.1, 0.2), "y": (-0.4, -0.2), "z": (0.00, 0.00), "roll": (-3.14159, 3.14159)},
             "velocity_range": {},
             "asset_cfg": SceneEntityCfg("object"),
         },
@@ -179,11 +180,48 @@ class RewardsCfg:
     # 불필요하게 관절을 크고 빠르게 움직이면 벌점(페널티)을 줍니다. (부드러운 움직임 유도)
     action_penalty = RewTerm(func=mdp.action_l2, weight=-0.01)
     
+    # 그리퍼나 팔이 덜덜 떠는 현상(Shivering/Oscillation)을 방지하기 위한 페널티
+    action_rate_penalty = RewTerm(func=mdp.action_rate_l2, weight=-0.05)
+    
     # 1. 오른쪽 팔이 초록색 물체(Object)에 다가갈수록 보상 부여 (Pick 시작)
     pick_reach = RewTerm(
         func=rewards.pick_reach_object, 
-        params={"asset_name": "robot", "pick_hand_regex": "panda_hand_0", "object_name": "object"},
+        weight=10.0, 
+        params={"asset_name": "robot", "pick_hand_regex": "panda_hand_0", "object_name": "object"}
+    )
+    
+    # 1-2. 물체 근처에 도달했을 때 그리퍼를 꽉 쥐도록 유도하는 보상
+    gripper_close = RewTerm(
+        func=rewards.gripper_close_reward,
         weight=10.0,
+        params={
+            "asset_name": "robot",
+            "pick_hand_regex": "panda_hand_0",
+            "object_name": "object",
+            "gripper_joint_regex": "panda_finger_joint[1-2]_0"
+        }
+    )
+    
+    # 1-3. 바닥 충돌 방지 페널티 (TCP가 큐브 중심 높이의 절반 아래로 내려가지 못하도록)
+    tcp_floor_penalty = RewTerm(
+        func=rewards.tcp_floor_collision_penalty,
+        weight=-100.0,  # 아주 강한 벌점을 주어 바닥에 절대 파고들지 않게 함
+        params={
+            "asset_name": "robot",
+            "pick_hand_regex": "panda_hand_0",
+            "object_name": "object"
+        }
+    )
+    
+    # 1-4. 완벽한 자세(Top-down & 짧은 축 정렬) 유도 보상
+    pick_grasp_pose = RewTerm(
+        func=rewards.pick_grasp_pose_reward,
+        weight=5.0,
+        params={
+            "asset_name": "robot",
+            "pick_hand_regex": "panda_hand_0",
+            "object_name": "object"
+        }
     )
     
     # 2. 오른쪽 팔이 물체를 바닥에서 들어 올리면 추가 보상 부여

@@ -36,13 +36,28 @@ def pick_reach_object(env: ManagerBasedRLEnv, asset_name: str, pick_hand_regex: 
     # TCP (손끝 중앙) 위치 = 손목 위치 + 10.34cm * Z방향
     tcp_pos = wrist_pos + 0.1034 * z_dir
     
-    obj_pos = obj.data.root_pos_w  # 물체의 월드 기준 루트 위치
+    obj_pos = obj.data.root_pos_w
     
-    # TCP와 물체 사이의 L2 거리를 구합니다.
-    dist = torch.norm(tcp_pos - obj_pos, dim=-1)
+    # 1. 물체 바로 위 12cm(0.12m, 큐브 높이의 3배) 지점을 '안전 대기(Hover) 위치'로 설정
+    hover_pos = obj_pos.clone()
+    hover_pos[:, 2] += 0.12
+    dist_to_hover = torch.norm(tcp_pos - hover_pos, dim=-1)
     
-    # 거리가 0에 가까워질수록 1에 수렴하는 보상을 반환합니다.
-    return torch.exp(-10.0 * dist)
+    # (자세 정렬은 pick_grasp_pose_reward 에서 독립적으로 5.0점 만점으로 채점됨)
+    
+    # 3. 물체로의 하강 보상
+    dist_to_obj = torch.norm(tcp_pos - obj_pos, dim=-1)
+    
+    # [수정] 곱연산(Tightrope) 해제:
+    # 하강 중에 탐험(노이즈)으로 인해 손목이 살짝 흔들렸다고 해서 하강 보상을 통째로 날려버리면,
+    # 로봇이 겁을 먹고 허공에 영원히 정지해버립니다. (Local Minima)
+    # 따라서 다가가는 보상은 거리만으로 주되, 최종 '그리퍼 닫기'에서만 자세를 엄격히 채점합니다.
+    approach_reward = torch.exp(-10.0 * dist_to_obj)
+    
+    # 0.3 대 0.7 비율로 합산
+    # 자세가 나쁠 때: 호버에 머무는 것(0.3)이 내려가는 것(0.0)보다 유리함 -> 위에서 자세를 잡음
+    # 자세가 완벽할 때: 내려가는 것(0.7)이 호버에 머무는 것(0.3)보다 훨씬 유리함 -> 완벽한 자세로 뚝 떨어짐
+    return 0.3 * torch.exp(-10.0 * dist_to_hover) + 0.7 * approach_reward
 
 def object_lifted_by_pick_arm(env: ManagerBasedRLEnv, asset_name: str, pick_hand_regex: str, object_name: str) -> torch.Tensor:
     """잡는 팔(Pick Arm) 부근에서 물체가 바닥으로부터 일정 높이 이상 들려 올려졌을 때 보상을 줍니다."""
@@ -64,14 +79,16 @@ def object_lifted_by_pick_arm(env: ManagerBasedRLEnv, asset_name: str, pick_hand
     obj_pos = obj.data.root_pos_w
     dist = torch.norm(tcp_pos - obj_pos, dim=-1)
     
-    # TCP(손끝)가 10cm 이내에 있을 때, 물체의 높이가 0.06m 이상으로 올라갈수록 연속적인 보상을 줍니다.
-    # (원기둥이 쓰러질 때 무게중심이 최대 5.6cm까지 높아지는 '꼼수(Exploit)'를 방지하기 위해 기준을 6cm로 상향합니다!)
     is_near_arm = dist < 0.10
     
-    # 높이가 0.06m에서 0.10m로 올라갈 때 0.0 ~ 1.0 사이의 값이 되도록 정규화
-    lift_amt = torch.clamp((obj_pos[:, 2] - 0.06) / 0.04, min=0.0, max=1.0)
+    # 똑바로 서야 한다는 조건(upright_factor)은 공중에서 물체가 살짝 기울어졌을 때도 
+    # 점수를 깎아버려서 학습을 너무 어렵게 만듭니다! 과감히 삭제합니다.
     
-    # 0과 1 사이로 부드럽게 증가하는 보상 반환
+    # 누워있는 상태(높이 0.02m)에서 시작하므로, 0.025m부터 연속적으로 점수를 줍니다.
+    # 만약 로봇이 물체를 세우는 꼼수(높이 0.05m)를 쓰더라도 33%의 점수를 받게 되는데,
+    # 오히려 물체를 세우면 잡기 훨씬 쉬워지기 때문에 좋은 중간 훈련 과정(Curriculum)이 됩니다!
+    lift_amt = torch.clamp((obj_pos[:, 2] - 0.025) / 0.075, min=0.0, max=1.0)
+    
     return lift_amt * is_near_arm.float()
 
 def handover_zone_approach(env: ManagerBasedRLEnv, object_name: str, handover_pos: list) -> torch.Tensor:
@@ -136,3 +153,121 @@ def object_to_target(env: ManagerBasedRLEnv, asset_name: str, place_hand_regex: 
     
     is_near_arm = dist_to_tcp < 0.10
     return torch.exp(-5.0 * dist_to_target_2d) * is_near_arm.float()
+
+def gripper_close_reward(env: ManagerBasedRLEnv, asset_name: str, pick_hand_regex: str, object_name: str, gripper_joint_regex: str) -> torch.Tensor:
+    """TCP가 물체 근처에 있을 때, 그리퍼(손가락)를 닫으면 강한 보상을 줍니다."""
+    robot = env.scene[asset_name]
+    obj = env.scene[object_name]
+    
+    # TCP 계산
+    wrist_idx = robot.find_bodies(pick_hand_regex)[0]
+    wrist_pos = robot.data.body_pos_w[:, wrist_idx[0]]
+    wrist_quat = robot.data.body_quat_w[:, wrist_idx[0]]
+    
+    w, x, y, z = wrist_quat[:, 0], wrist_quat[:, 1], wrist_quat[:, 2], wrist_quat[:, 3]
+    z_dir_x = 2.0 * (x * z + w * y)
+    z_dir_y = 2.0 * (y * z - w * x)
+    z_dir_z = 1.0 - 2.0 * (x * x + y * y)
+    z_dir = torch.stack([z_dir_x, z_dir_y, z_dir_z], dim=-1)
+    tcp_pos = wrist_pos + 0.1034 * z_dir
+    
+    obj_pos = obj.data.root_pos_w
+    dist = torch.norm(tcp_pos - obj_pos, dim=-1)
+    
+    # 그리퍼 폭 계산
+    gripper_idx, _ = robot.find_joints(gripper_joint_regex)
+    gripper_pos = robot.data.joint_pos[:, gripper_idx]
+    gripper_width = torch.sum(gripper_pos, dim=-1)
+    
+    # 1. 접근 단계 (3cm 밖): 주먹 쥐고 다가가는 꼼수 방지
+    # 다가가는 내내 손을 활짝 펴고(> 0.07m) 있어야만 보상을 줌
+    is_far = dist >= 0.03
+    is_opened = gripper_width > 0.07
+    open_reward = is_far.float() * is_opened.float()
+    
+    # 자세 정렬도 계산 (그리퍼 닫기 전에 완벽한 자세를 강제)
+    # 1. 로컬 Y축 (손가락 방향) 계산
+    robot_y_x = 2.0 * (x * y - w * z)
+    robot_y_y = 1.0 - 2.0 * (x * x + z * z)
+    robot_y_z = 2.0 * (y * z + w * x)
+    
+    # 2. 큐브의 로컬 Y축 (짧은 축) 계산
+    obj_quat = obj.data.root_quat_w
+    ow, ox, oy, oz = obj_quat[:, 0], obj_quat[:, 1], obj_quat[:, 2], obj_quat[:, 3]
+    cube_y_x = 2.0 * (ox * oy - ow * oz)
+    cube_y_y = 1.0 - 2.0 * (ox * ox + oz * oz)
+    cube_y_z = 2.0 * (oy * oz + ow * ox)
+    
+    # 3. 내적(Dot Product)을 통해 평행도 계산
+    dot_product = robot_y_x * cube_y_x + robot_y_y * cube_y_y + robot_y_z * cube_y_z
+    
+    pose_alignment = ((-z_dir_z + 1.0) / 2.0) * ((dot_product + 1.0) / 2.0)
+    
+    # 2. 포획 단계 (3cm 이내): 큐브를 품었을 때만 닫아야 함
+    # [핵심] 닫기 보상에도 자세 정렬도(pose_alignment)를 곱해서, 자세가 비뚤어지면 닫아도 점수 없음!
+    is_engulfing = dist < 0.03
+    is_closed = gripper_width < 0.05
+    close_reward = is_closed.float() * is_engulfing.float() * torch.exp(-100.0 * dist) * pose_alignment
+    
+    # 두 보상을 합쳐서 반환 (거리에 따라 자연스럽게 손을 펴고 다가가서 삼킨 뒤 닫음)
+    return open_reward + close_reward
+
+def tcp_floor_collision_penalty(env: ManagerBasedRLEnv, asset_name: str, pick_hand_regex: str, object_name: str) -> torch.Tensor:
+    """TCP(그리퍼 끝)가 바닥에 부딪히는 것을 방지하기 위해 물체 기본 높이의 1/2 밑으로 내려가면 페널티를 부과합니다."""
+    robot = env.scene[asset_name]
+    obj = env.scene[object_name]
+    
+    wrist_idx = robot.find_bodies(pick_hand_regex)[0]
+    wrist_z = robot.data.body_pos_w[:, wrist_idx[0], 2]
+    wrist_quat = robot.data.body_quat_w[:, wrist_idx[0]]
+    
+    # 쿼터니언을 통해 로컬 Z축의 월드 Z성분 계산
+    x, y = wrist_quat[:, 1], wrist_quat[:, 2]
+    z_dir_z = 1.0 - 2.0 * (x * x + y * y)
+    
+    # TCP의 Z 높이
+    tcp_z = wrist_z + 0.1034 * z_dir_z
+    
+    # 물체의 기본 높이(Resting height) 가져오기
+    # obj.data.default_root_state[:, 2]는 환경 초기화 시의 Z 좌표(즉, 큐브의 중심 높이)입니다.
+    obj_base_z = obj.data.default_root_state[:, 2]
+    min_height = obj_base_z * 0.5  # 큐브 중심 높이의 절반을 하한선으로 설정
+    
+    # min_height보다 아래로 내려간 깊이 (안 내려갔으면 0.0)
+    violation = torch.clamp(min_height - tcp_z, min=0.0)
+    
+    return violation
+
+def pick_grasp_pose_reward(env: ManagerBasedRLEnv, asset_name: str, pick_hand_regex: str, object_name: str) -> torch.Tensor:
+    """TCP가 수직 아래를 바라보고, 손가락이 물체의 짧은 축(로컬 Y축)에 맞춰지도록 유도하는 보상"""
+    robot = env.scene[asset_name]
+    obj = env.scene[object_name]
+    
+    wrist_idx = robot.find_bodies(pick_hand_regex)[0]
+    wrist_quat = robot.data.body_quat_w[:, wrist_idx[0]]
+    obj_quat = obj.data.root_quat_w
+    
+    # 1. 로컬 Z축(수직 하강) -> 월드 -Z 방향 (-1.0 최고)
+    w, x, y, z = wrist_quat[:, 0], wrist_quat[:, 1], wrist_quat[:, 2], wrist_quat[:, 3]
+    z_dir_z = 1.0 - 2.0 * (x * x + y * y)
+    vertical_alignment = (-z_dir_z + 1.0) / 2.0
+    
+    # 2. 로컬 Y축 (손가락 방향) 계산
+    robot_y_x = 2.0 * (x * y - w * z)
+    robot_y_y = 1.0 - 2.0 * (x * x + z * z)
+    robot_y_z = 2.0 * (y * z + w * x)
+    
+    # 3. 큐브의 로컬 Y축 (짧은 축) 계산
+    ow, ox, oy, oz = obj_quat[:, 0], obj_quat[:, 1], obj_quat[:, 2], obj_quat[:, 3]
+    cube_y_x = 2.0 * (ox * oy - ow * oz)
+    cube_y_y = 1.0 - 2.0 * (ox * ox + oz * oz)
+    cube_y_z = 2.0 * (oy * oz + ow * ox)
+    
+    # 4. 두 Y축 간의 내적(Dot Product)을 통해 평행도 계산
+    dot_product = robot_y_x * cube_y_x + robot_y_y * cube_y_y + robot_y_z * cube_y_z
+    
+    # 양방향 스피닝 방지를 위해 정방향 평행(+1.0)만 만점을 줌
+    finger_alignment = (dot_product + 1.0) / 2.0
+    
+    # 두 정렬도를 곱하여 최종 자세 보상 반환
+    return vertical_alignment * finger_alignment

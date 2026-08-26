@@ -141,11 +141,11 @@ python scripts/zero_agent.py --task=Isaac-Dual-Arm-v0
 SKRL 라이브러리를 사용하여 강화학습 모델을 훈련하려면 아래 명령어를 실행하세요:
 
 ```bash
-python scripts/skrl/train.py --task=Isaac-Dual-Arm-v0 --num_envs=4096
+python scripts/skrl/train.py --task=Isaac-Dual-Arm-v0 --num_envs 4096
 ```
 
 **주요 인자 (Arguments):**
-- `--num_envs=4096`: 동시에 시뮬레이션할 환경의 개수를 지정합니다. GPU 메모리에 맞게 조절하세요.
+- `--num_envs`: 동시에 시뮬레이션할 환경의 개수를 지정합니다. GPU 메모리에 맞게 조절하세요.
 - `--checkpoint=/경로/model.pt`: 이전에 저장된 모델 가중치 파일(체크포인트)을 불러와서 이어서 훈련할 때 사용합니다.
 - `--headless`: 화면 렌더링 없이 백그라운드에서 실행합니다 (훈련 속도 향상).
 - `--video`: 훈련 중 시뮬레이션 영상을 녹화합니다.
