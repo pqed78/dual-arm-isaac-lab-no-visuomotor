@@ -7,6 +7,8 @@ The goal of this environment is to train an RL policy to complete the following 
 2. **Handover:** The right arm moves the object to a designated handover zone in mid-air, while the left arm reaches for it.
 3. **Place:** The left arm takes the object and successfully places it onto a red target marker.
 
+*Note: This repository (`dual-arm-isaac-lab-no-visuomotor`) provides a **state-based** observation environment (no cameras/visuomotor included). A vision-based version using camera sensors is planned for future updates.*
+
 ## Features
 - **Custom Scene Configuration (`DualArmSceneCfg`)**: Instantiates a ground plane, two Franka arms, a green cylinder object, and a red target marker.
 - **Custom Reward Functions**: Dense reward shaping to guide the agents through the complex handover task:
@@ -84,6 +86,8 @@ python scripts/skrl/play.py --task=Isaac-Dual-Arm-v0 --num_envs=64 --checkpoint=
 1. **집기 (Pick):** 오른쪽 팔이 바닥에 있는 초록색 원기둥을 집어 올립니다.
 2. **건네주기 (Handover):** 오른쪽 팔이 공중의 핸드오버 지점(Handover zone)으로 물체를 가져가고, 왼쪽 팔이 이를 받기 위해 다가갑니다.
 3. **내려놓기 (Place):** 왼쪽 팔이 물체를 건네받아 빨간색 목표 지점(Target)에 성공적으로 내려놓습니다.
+
+*참고: 현재 이 리포지토리(`dual-arm-isaac-lab-no-visuomotor`)는 카메라가 포함되지 않은 **상태 기반(State-based)** 관측 환경을 제공합니다. 비전(Vision) 센서를 활용하는 시각 기반 모델은 향후 추가될 예정입니다.*
 
 ## 주요 기능
 - **맞춤형 씬 구성 (`DualArmSceneCfg`)**: 바닥, 두 대의 프랭카 로봇 팔, 초록색 원기둥 물체, 그리고 빨간색 타겟 마커를 생성합니다.
