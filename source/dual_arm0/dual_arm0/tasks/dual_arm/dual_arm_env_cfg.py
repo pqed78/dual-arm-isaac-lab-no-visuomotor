@@ -1,0 +1,260 @@
+import math
+
+import isaaclab.sim as sim_utils
+from isaaclab.assets import ArticulationCfg, AssetBaseCfg, RigidObjectCfg
+from isaaclab.envs import ManagerBasedRLEnvCfg
+from isaaclab.managers import EventTermCfg as EventTerm
+from isaaclab.managers import ObservationGroupCfg as ObsGroup
+from isaaclab.managers import ObservationTermCfg as ObsTerm
+from isaaclab.managers import RewardTermCfg as RewTerm
+from isaaclab.managers import SceneEntityCfg
+from isaaclab.managers import TerminationTermCfg as DoneTerm
+from isaaclab.scene import InteractiveSceneCfg
+from isaaclab.sensors import ContactSensorCfg
+from isaaclab.utils import configclass
+
+import isaaclab.envs.mdp as mdp
+
+from . import rewards
+from .config.dual_franka_cfg import DUAL_FRANKA_CFG
+
+
+@configclass
+class DualArmSceneCfg(InteractiveSceneCfg):
+    """Configuration for the scene.
+    시뮬레이션 환경의 씬(장면)을 구성하는 클래스입니다.
+    바닥, 로봇, 조작할 물체, 목표 지점 마커, 조명 등의 요소를 정의합니다.
+    """
+
+    # ground plane (바닥 평면 설정)
+    ground = AssetBaseCfg(
+        prim_path="/World/ground", # 바닥이 생성될 USD 프림 경로
+        spawn=sim_utils.GroundPlaneCfg(size=(100.0, 100.0)), # 100x100 크기의 평면 생성
+    )
+
+    # robot (로봇 설정)
+    # DUAL_FRANKA_CFG에서 기본 설정을 가져오며, 환경 네임스페이스를 반영하여 경로를 설정합니다.
+    robot = DUAL_FRANKA_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
+
+    # object to manipulate (cylinder) (조작할 대상 물체인 원기둥 설정)
+    object = RigidObjectCfg(
+        prim_path="{ENV_REGEX_NS}/Object", # 물체가 생성될 경로
+        init_state=RigidObjectCfg.InitialStateCfg(pos=(0.5, 0.0, 0.05), rot=(1.0, 0.0, 0.0, 0.0)), # 초기 위치 및 회전값 (x=0.5, y=0.0, z=0.05)
+        spawn=sim_utils.CylinderCfg(
+            radius=0.025, # 원기둥 반지름
+            height=0.1, # 원기둥 높이
+            rigid_props=sim_utils.RigidBodyPropertiesCfg(), # 강체 물리 속성 활성화
+            mass_props=sim_utils.MassPropertiesCfg(mass=0.1), # 질량을 0.1kg으로 설정
+            collision_props=sim_utils.CollisionPropertiesCfg(), # 충돌 속성 활성화
+            visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.0, 1.0, 0.0)), # 초록색으로 렌더링되도록 색상 지정
+        ),
+    )
+
+    # target location marker (물체를 옮길 목표 위치 마커 설정)
+    target = RigidObjectCfg(
+        prim_path="{ENV_REGEX_NS}/Target",
+        init_state=RigidObjectCfg.InitialStateCfg(pos=(0.5, 0.5, 0.001)),
+        spawn=sim_utils.CylinderCfg(
+            radius=0.08,
+            height=0.002,
+            rigid_props=sim_utils.RigidBodyPropertiesCfg(kinematic_enabled=True),
+            visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(1.0, 0.0, 0.0)),
+        ),
+    )
+
+    # lights (조명 설정)
+    light = AssetBaseCfg(
+        prim_path="/World/light",
+        spawn=sim_utils.DomeLightCfg(color=(0.75, 0.75, 0.75), intensity=3000.0), # 돔(Dome) 형태의 조명을 생성하여 씬 전체를 밝게 비춤
+    )
+
+
+@configclass
+class ActionsCfg:
+    """Action specifications for the MDP.
+    MDP(Markov Decision Process) 환경의 행동(Action) 공간을 정의하는 클래스입니다.
+    """
+    
+    # 로봇 팔의 관절 위치 제어 행동
+    arm_action = mdp.JointPositionActionCfg(
+        asset_name="robot",
+        joint_names=[".*panda_joint[1-7].*"],
+        scale=1.0,
+    )
+    
+    # 왼쪽 그리퍼(손)의 개폐 제어 행동 (Dimension: 1)
+    left_gripper = mdp.BinaryJointPositionActionCfg(
+        asset_name="robot",
+        joint_names=["panda_finger_joint[1-2]"], 
+        open_command_expr={"panda_finger_joint[1-2]": 0.04}, 
+        close_command_expr={"panda_finger_joint[1-2]": 0.0}, 
+    )
+    
+    # 오른쪽 그리퍼(손)의 개폐 제어 행동 (Dimension: 1)
+    right_gripper = mdp.BinaryJointPositionActionCfg(
+        asset_name="robot",
+        joint_names=["panda_finger_joint[1-2]_0"], 
+        open_command_expr={"panda_finger_joint[1-2]_0": 0.04}, 
+        close_command_expr={"panda_finger_joint[1-2]_0": 0.0}, 
+    )
+
+
+@configclass
+class ObservationsCfg:
+    """Observation specifications for the MDP.
+    강화학습 에이전트(네트워크)가 상태를 인지하기 위한 관측(Observation) 공간을 정의합니다.
+    """
+
+    @configclass
+    class PolicyCfg(ObsGroup):
+        """Observations for policy network."""
+        # Joint positions and velocities
+        joint_pos = ObsTerm(func=mdp.joint_pos_rel, params={"asset_cfg": SceneEntityCfg("robot")})
+        joint_vel = ObsTerm(func=mdp.joint_vel_rel, params={"asset_cfg": SceneEntityCfg("robot")})
+        
+        # Object pose
+        object_pos = ObsTerm(func=mdp.root_pos_w, params={"asset_cfg": SceneEntityCfg("object")})
+        object_quat = ObsTerm(func=mdp.root_quat_w, params={"asset_cfg": SceneEntityCfg("object")})
+        
+        # Target pose
+        target_pos = ObsTerm(func=mdp.root_pos_w, params={"asset_cfg": SceneEntityCfg("target")})
+        
+        def __post_init__(self):
+            self.enable_corruption = True
+            # 정의된 관측 항들을 하나의 텐서로 이어붙여서(concatenate) 반환할지 여부
+            self.concatenate_terms = True
+
+    # observation groups (정책 네트워크에서 사용할 관측 그룹 초기화)
+    policy: PolicyCfg = PolicyCfg()
+
+
+@configclass
+class EventCfg:
+    """Configuration for events.
+    에피소드 초기화 또는 특정 조건 발생 시 환경을 재설정(Reset)하는 이벤트들을 정의합니다.
+    """
+    
+    # 로봇 초기화 이벤트
+    reset_robot = EventTerm(
+        func=mdp.reset_joints_by_scale, # 관절 값을 스케일에 맞춰 초기화하는 함수
+        mode="reset", # 환경 리셋 시에만 발동
+        params={
+            "position_range": (0.0, 0.0), # 위치 초기화 범위 (정확히 기본 위치로 초기화)
+            "velocity_range": (0.0, 0.0), # 속도 초기화 범위 (정지 상태로 초기화)
+        },
+    )
+    
+    # 물체 초기화 이벤트 (매 에피소드마다 물체를 지정된 범위 내의 무작위 위치로 스폰)
+    reset_object = EventTerm(
+        func=mdp.reset_root_state_uniform,
+        mode="reset",
+        params={
+            "pose_range": {"x": (0.1, 0.2), "y": (-0.4, -0.2), "z": (0.00, 0.00)},
+            "velocity_range": {},
+            "asset_cfg": SceneEntityCfg("object"),
+        },
+    )
+
+    # 목표 원(Target) 초기화 이벤트 (매 에피소드마다 원의 위치를 무작위로 스폰)
+    reset_target = EventTerm(
+        func=mdp.reset_root_state_uniform,
+        mode="reset",
+        params={
+            # X, Y는 무작위로 변경하되, Z는 바닥(0.001)에 딱 붙어있도록 설정
+            "pose_range": {"x": (0.1, 0.2), "y": (0.2, 0.4), "z": (0.001, 0.001)},
+            "velocity_range": {},
+            "asset_cfg": SceneEntityCfg("target"),
+        },
+    )
+
+
+# 허공에서 왼팔이 오른팔로 물체를 넘겨주는(Handover) 가상의 중간 목표 지점
+HANDOVER_POS = [0.0, 0.0, 0.4]
+
+@configclass
+class RewardsCfg:
+    """Reward terms for the MDP.
+    강화학습 에이전트가 어떤 행동을 했을 때 칭찬(양수) 또는 벌(음수)을 줄지 결정하는 보상 함수들을 정의합니다.
+    """
+    # 불필요하게 관절을 크고 빠르게 움직이면 벌점(페널티)을 줍니다. (부드러운 움직임 유도)
+    action_penalty = RewTerm(func=mdp.action_l2, weight=-0.01)
+    
+    # 1. 오른쪽 팔이 초록색 물체(Object)에 다가갈수록 보상 부여 (Pick 시작)
+    pick_reach = RewTerm(
+        func=rewards.pick_reach_object, 
+        params={"asset_name": "robot", "pick_hand_regex": "panda_hand_0", "object_name": "object"},
+        weight=10.0,
+    )
+    
+    # 2. 오른쪽 팔이 물체를 바닥에서 들어 올리면 추가 보상 부여
+    pick_lift = RewTerm(
+        func=rewards.object_lifted_by_pick_arm,
+        params={"asset_name": "robot", "pick_hand_regex": "panda_hand_0", "object_name": "object"},
+        weight=15.0, # 잡고 들어올리는 행위 자체가 매우 어렵기 때문에 보상을 대폭 상향!
+    )
+    
+    # 3. 들어 올린 물체를 중앙의 핸드오버 지점(HANDOVER_POS)으로 가져올수록 보상 부여
+    handover_approach = RewTerm(
+        func=rewards.handover_zone_approach,
+        params={"object_name": "object", "handover_pos": HANDOVER_POS},
+        weight=20.0,
+    )
+    
+    # 4. 왼쪽 팔이, 핸드오버 지점에 있는 물체를 향해 다가갈수록 보상 부여 (Handover 받기)
+    place_reach = RewTerm(
+        func=rewards.place_reach_object,
+        params={"asset_name": "robot", "place_hand_regex": "panda_hand", "object_name": "object", "handover_pos": HANDOVER_POS},
+        weight=10.0,
+    )
+    
+    # 5. 왼쪽 팔이 물체를 빨간색 원(Target) 안에 성공적으로 내려놓으면 가장 큰 최종 보상 부여 (Place 완료)
+    place_object = RewTerm(
+        func=rewards.object_to_target,
+        params={"asset_name": "robot", "place_hand_regex": "panda_hand", "object_name": "object", "target_name": "target"},
+        weight=50.0,
+    )
+
+
+@configclass
+class TerminationsCfg:
+    """Termination terms for the MDP.
+    에피소드 종료(Termination) 조건을 정의합니다.
+    """
+    # 시간 초과 (에피소드 최대 길이에 도달하면 종료)
+    time_out = DoneTerm(func=mdp.time_out, time_out=True)
+    
+    # (주석 처리됨) 물체가 특정 높이 이하로 떨어지면 에피소드 종료 (실패 조건)
+    # object_dropped = DoneTerm(func=mdp.root_height_below_minimum, params={"asset_name": "object", "minimum_height": -0.1})
+
+
+@configclass
+class DualArmEnvCfg(ManagerBasedRLEnvCfg):
+    """Configuration for the Dual Arm environment.
+    위에서 정의한 씬, 행동, 관측, 이벤트, 보상, 종료 조건을 모두 합쳐서
+    최종적인 듀얼 암(Dual Arm) 환경을 구성하는 메인 설정 클래스입니다.
+    """
+
+    # Scene settings (씬 설정 적용: 총 4096개의 병렬 환경을 2.0m 간격으로 생성)
+    scene: DualArmSceneCfg = DualArmSceneCfg(num_envs=4096, env_spacing=2.0)
+    
+    # Basic settings (MDP 기본 설정 등록)
+    observations: ObservationsCfg = ObservationsCfg() # 관측값
+    actions: ActionsCfg = ActionsCfg() # 행동
+    events: EventCfg = EventCfg() # 이벤트 (리셋 조건 등)
+    rewards: RewardsCfg = RewardsCfg() # 보상
+    terminations: TerminationsCfg = TerminationsCfg() # 종료 조건
+
+    def __post_init__(self):
+        """Post initialization.
+        초기화 이후에 세부적인 시뮬레이션 파라미터를 추가로 설정합니다.
+        """
+        # general settings (일반 설정)
+        self.decimation = 2 # 제어 주기 비율 (시뮬레이션 스텝 2번당 1번 액션 적용)
+        self.episode_length_s = 10.0 # 한 에피소드의 최대 길이를 10초로 제한
+        
+        # viewer settings (뷰어/렌더링 카메라 기본 위치 설정)
+        self.viewer.eye = (2.0, 2.0, 2.0) # 카메라 위치
+        self.viewer.lookat = (0.0, 0.0, 0.0) # 카메라가 바라보는 지점 (원점)
+        
+        # step settings (물리 시뮬레이션 스텝 시간 설정)
+        self.sim.dt = 1.0 / 60.0 # 60Hz로 시뮬레이션 진행
