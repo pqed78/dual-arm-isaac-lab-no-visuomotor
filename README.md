@@ -13,11 +13,11 @@ The goal of this environment is to train an RL policy to complete the following 
 - **Custom Scene Configuration (`DualArmSceneCfg`)**: Instantiates a ground plane, two Franka arms, a green cylinder object, and a red target marker.
 - **Custom Reward Functions**: Dense reward shaping to guide the agents through the complex handover task. The reward system is designed to prevent local minima and exploits:
   - `action_penalty` (-0.01) & `action_rate_penalty` (-0.05): Penalizes large and sudden actions to induce smooth movement.
-  - `tcp_floor_penalty` (-100.0): Strict penalty for the TCP dropping below 1cm to prevent floor collisions.
-  - `pick_grasp_pose` (5.0): Global posture reward. Dynamically calculates the dot product between the robot's local Y-axis and the cube's randomized local Y-axis to ensure perfect alignment regardless of spawn yaw/roll.
-  - `pick_reach` (10.0): Two-stage approach reward. Rewards moving to a 12cm hover position first, then descending vertically. Decoupled from pose to prevent the agent from freezing in mid-air (the tightrope bottleneck).
-  - `gripper_close` (10.0): Forces the gripper to remain fully open (>7cm) during approach, and only rewards closing when engulfing the object with perfect pose alignment.
-  - `pick_lift` (15.0): Reward for successfully lifting the object off the table.
+  - `tcp_floor_penalty` (-20.0): Penalty for the TCP dropping below the object's resting height to prevent floor collisions. Relaxed to encourage reaching down.
+  - `pick_grasp_pose` (3.0): Global posture reward. Weight reduced to prevent getting stuck in local minima just hovering with good pose.
+  - `pick_reach` (5.0): Approach reward. Weight reduced to balance with lifting rewards.
+  - `gripper_close` (20.0): Strongly rewards closing the gripper when engulfing the object (distance < 6cm). Decoupled from pose alignment to encourage grasping attempts.
+  - `pick_lift` (50.0): Massive reward for successfully lifting the object off the table (even slightly), breaking the "Valley of Death" bottleneck.
   - `handover_approach` (20.0): Reward for bringing the object to the center handover position.
   - `place_reach` (10.0): Reward for the left arm reaching the handover position.
   - `place_object` (25.0): Massive terminal reward for successfully placing the object on the target.
@@ -106,11 +106,11 @@ python scripts/skrl/play.py --task=Isaac-Dual-Arm-v0 --num_envs=64 --checkpoint=
 - **맞춤형 씬 구성 (`DualArmSceneCfg`)**: 바닥, 두 대의 프랭카 로봇 팔, 초록색 원기둥 물체, 그리고 빨간색 타겟 마커를 생성합니다.
 - **세분화된 보상 함수 (Dense Rewards)**: 복잡한 핸드오버 작업을 유도하고 꼼수(Exploits)를 완벽히 차단하기 위해 다음과 같이 구성되어 있습니다:
   - `action_penalty` (-0.01) & `action_rate_penalty` (-0.05): 거칠거나 떨리는 관절 움직임을 억제하여 부드러운 모션 유도.
-  - `tcp_floor_penalty` (-100.0): 그리퍼가 1cm 밑으로 내려가면 엄청난 페널티를 주어 바닥 충돌 방지.
-  - `pick_grasp_pose` (5.0): 큐브가 어떤 각도로 스폰되든 큐브의 '짧은 축' 3D 벡터와 손가락 벡터를 내적(Dot Product)하여 100% 겹치게 자세 유도.
-  - `pick_reach` (10.0): 12cm 상공으로 먼저 다가가게 한 뒤 수직 하강 유도. 하강 점수와 자세 점수를 분리하여 로봇이 공중에 얼어붙는 현상(Local Minima) 해결.
-  - `gripper_close` (10.0): 큐브에서 3cm 이상 멀리 있을 땐 손을 활짝 펴야만 만점 부여. 반경 3cm 내에 완벽한 자세로 진입했을 때만 주먹 쥐도록 유도.
-  - `pick_lift` (15.0): 물체를 성공적으로 들어 올렸을 때 주어지는 보상.
+  - `tcp_floor_penalty` (-20.0): 바닥 충돌 방지 페널티. 로봇이 밑으로 내려가는 것을 두려워하지 않도록 벌점을 대폭 완화.
+  - `pick_grasp_pose` (3.0): 자세 정렬 보상. 완벽한 자세로 허공에 멈춰있는 꼼수를 막기 위해 비중 축소.
+  - `pick_reach` (5.0): 물체로 다가가는 보상 비중 축소.
+  - `gripper_close` (20.0): 물체 근처(6cm 이내)에 진입하면 손을 닫도록 유도. 자세 조건(pose alignment)을 제거하여 어설픈 자세라도 쥐려는 시도 자체에 강한 인센티브 부여.
+  - `pick_lift` (50.0): 물체를 바닥에서 조금(2mm)이라도 들어 올렸을 때 부여되는 엄청난 보상. '들어 올리기' 병목(Valley of Death)을 돌파하기 위한 핵심 보상.
   - `handover_approach` (20.0): 물체를 중앙 핸드오버 지점으로 가져올 때 주어지는 보상.
   - `place_reach` (10.0): 왼쪽 팔이 핸드오버 지점으로 다가갈 때 주어지는 보상.
   - `place_object` (25.0): 물체를 최종 타겟에 성공적으로 내려놓았을 때 주어지는 가장 큰 보상.

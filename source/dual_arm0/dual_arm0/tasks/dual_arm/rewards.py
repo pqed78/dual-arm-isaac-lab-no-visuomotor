@@ -48,16 +48,14 @@ def pick_reach_object(env: ManagerBasedRLEnv, asset_name: str, pick_hand_regex: 
     # 3. 물체로의 하강 보상
     dist_to_obj = torch.norm(tcp_pos - obj_pos, dim=-1)
     
-    # [수정] 곱연산(Tightrope) 해제:
-    # 하강 중에 탐험(노이즈)으로 인해 손목이 살짝 흔들렸다고 해서 하강 보상을 통째로 날려버리면,
-    # 로봇이 겁을 먹고 허공에 영원히 정지해버립니다. (Local Minima)
-    # 따라서 다가가는 보상은 거리만으로 주되, 최종 '그리퍼 닫기'에서만 자세를 엄격히 채점합니다.
-    approach_reward = torch.exp(-10.0 * dist_to_obj)
+    # [수정] exp(-10*dist)는 거리가 멀 때 기울기(Gradient)가 0에 수렴해 로봇이 움직이지 않는 문제가 있습니다.
+    # 거리가 멀어도 지속적으로 큐브 방향을 가리키는(Long-tail) 형태의 보상 함수 1 / (1 + 5 * dist) 를 사용합니다.
+    reward_hover = 1.0 / (1.0 + 5.0 * dist_to_hover)
+    approach_reward = 1.0 / (1.0 + 5.0 * dist_to_obj)
     
-    # 0.3 대 0.7 비율로 합산
-    # 자세가 나쁠 때: 호버에 머무는 것(0.3)이 내려가는 것(0.0)보다 유리함 -> 위에서 자세를 잡음
-    # 자세가 완벽할 때: 내려가는 것(0.7)이 호버에 머무는 것(0.3)보다 훨씬 유리함 -> 완벽한 자세로 뚝 떨어짐
-    return 0.3 * torch.exp(-10.0 * dist_to_hover) + 0.7 * approach_reward
+    # 호버 위치 도달(0.3)과 최종 하강(0.7)을 결합하여, 
+    # 허공을 거쳐 큐브로 수직 하강하는 엘리베이터 궤적을 유도합니다.
+    return 0.3 * reward_hover + 0.7 * approach_reward
 
 def object_lifted_by_pick_arm(env: ManagerBasedRLEnv, asset_name: str, pick_hand_regex: str, object_name: str) -> torch.Tensor:
     """잡는 팔(Pick Arm) 부근에서 물체가 바닥으로부터 일정 높이 이상 들려 올려졌을 때 보상을 줍니다."""
@@ -81,26 +79,35 @@ def object_lifted_by_pick_arm(env: ManagerBasedRLEnv, asset_name: str, pick_hand
     
     is_near_arm = dist < 0.10
     
-    # 똑바로 서야 한다는 조건(upright_factor)은 공중에서 물체가 살짝 기울어졌을 때도 
-    # 점수를 깎아버려서 학습을 너무 어렵게 만듭니다! 과감히 삭제합니다.
+    # [수정] 꼼수 방지: 주먹으로 큐브를 쳐서 위로 날려버리는(Batting/Flicking) 꼼수를 막기 위해,
+    # 그리퍼가 닫혀있는지 확인합니다. 너무 타이트하면 살짝 미끄러졌을 때 보상을 못 받으므로 0.06m로 완화합니다.
+    gripper_idx = robot.find_joints("panda_finger_joint.*")[0]
+    gripper_pos = robot.data.joint_pos[:, gripper_idx]
+    gripper_width = torch.sum(gripper_pos, dim=-1)
+    is_closed = gripper_width < 0.06
     
-    # 누워있는 상태(높이 0.02m)에서 시작하므로, 0.025m부터 연속적으로 점수를 줍니다.
-    # 만약 로봇이 물체를 세우는 꼼수(높이 0.05m)를 쓰더라도 33%의 점수를 받게 되는데,
-    # 오히려 물체를 세우면 잡기 훨씬 쉬워지기 때문에 좋은 중간 훈련 과정(Curriculum)이 됩니다!
-    lift_amt = torch.clamp((obj_pos[:, 2] - 0.025) / 0.075, min=0.0, max=1.0)
+    # [수정] 누워있는 상태(높이 0.02m)에서 시작하므로, 아주 미세하게라도(0.022m) 위로 들리면 점수를 주기 시작합니다.
+    lift_amt = torch.clamp((obj_pos[:, 2] - 0.022) / 0.078, min=0.0, max=1.0)
     
-    return lift_amt * is_near_arm.float()
+    return lift_amt * is_near_arm.float() * is_closed.float()
 
-def handover_zone_approach(env: ManagerBasedRLEnv, object_name: str, handover_pos: list) -> torch.Tensor:
+def handover_zone_approach(env: ManagerBasedRLEnv, asset_name: str, pick_hand_regex: str, object_name: str, handover_pos: list) -> torch.Tensor:
     """물체가 들어 올려진 상태에서 중앙 핸드오버(인계) 구역으로 다가갈수록 보상을 줍니다."""
+    robot = env.scene[asset_name]
     obj = env.scene[object_name]
     obj_pos = obj.data.root_pos_w
     
     target_pos = torch.tensor(handover_pos, device=env.device).unsqueeze(0)
     dist = torch.norm(obj_pos - target_pos, dim=-1)
     
+    # 꼼수 방지: 물체가 허공에 떠 있더라도, 로봇이 꽉 쥐고(gripper_width < 0.05) 있을 때만 인정
+    gripper_idx = robot.find_joints("panda_finger_joint.*")[0]
+    gripper_pos = robot.data.joint_pos[:, gripper_idx]
+    gripper_width = torch.sum(gripper_pos, dim=-1)
+    is_closed = gripper_width < 0.05
+    
     is_lifted = obj_pos[:, 2] > 0.1
-    return torch.exp(-5.0 * dist) * is_lifted.float()
+    return torch.exp(-5.0 * dist) * is_lifted.float() * is_closed.float()
 
 def place_reach_object(env: ManagerBasedRLEnv, asset_name: str, place_hand_regex: str, object_name: str, handover_pos: list) -> torch.Tensor:
     """물체가 핸드오버 구역 내에 있을 때만, 내려놓는 팔(Place Arm) 그리퍼가 물체에 가까워질수록 보상을 줍니다."""
@@ -179,13 +186,7 @@ def gripper_close_reward(env: ManagerBasedRLEnv, asset_name: str, pick_hand_rege
     gripper_pos = robot.data.joint_pos[:, gripper_idx]
     gripper_width = torch.sum(gripper_pos, dim=-1)
     
-    # 1. 접근 단계 (3cm 밖): 주먹 쥐고 다가가는 꼼수 방지
-    # 다가가는 내내 손을 활짝 펴고(> 0.07m) 있어야만 보상을 줌
-    is_far = dist >= 0.03
-    is_opened = gripper_width > 0.07
-    open_reward = is_far.float() * is_opened.float()
-    
-    # 자세 정렬도 계산 (그리퍼 닫기 전에 완벽한 자세를 강제)
+    # 자세 정렬도 계산
     # 1. 로컬 Y축 (손가락 방향) 계산
     robot_y_x = 2.0 * (x * y - w * z)
     robot_y_y = 1.0 - 2.0 * (x * x + z * z)
@@ -200,17 +201,17 @@ def gripper_close_reward(env: ManagerBasedRLEnv, asset_name: str, pick_hand_rege
     
     # 3. 내적(Dot Product)을 통해 평행도 계산
     dot_product = robot_y_x * cube_y_x + robot_y_y * cube_y_y + robot_y_z * cube_y_z
-    
     pose_alignment = ((-z_dir_z + 1.0) / 2.0) * ((dot_product + 1.0) / 2.0)
+
+    # 1. 포획(Engulfing) 조건: 거리를 조금 더 여유롭게 줍니다 (6cm 이내면 오르기 시작, 2cm면 만점)
+    is_engulfing = torch.clamp((0.06 - dist) / 0.04, 0.0, 1.0)
     
-    # 2. 포획 단계 (3cm 이내): 큐브를 품었을 때만 닫아야 함
-    # [핵심] 닫기 보상에도 자세 정렬도(pose_alignment)를 곱해서, 자세가 비뚤어지면 닫아도 점수 없음!
-    is_engulfing = dist < 0.03
-    is_closed = gripper_width < 0.05
-    close_reward = is_closed.float() * is_engulfing.float() * torch.exp(-100.0 * dist) * pose_alignment
+    # 2. 그리퍼 닫힘 조건: 4cm 이하로 닫히면 만점
+    is_closed = torch.clamp((0.08 - gripper_width) / 0.04, 0.0, 1.0)
     
-    # 두 보상을 합쳐서 반환 (거리에 따라 자연스럽게 손을 펴고 다가가서 삼킨 뒤 닫음)
-    return open_reward + close_reward
+    # [수정] pose_alignment를 곱셈에서 분리하거나 제거합니다. 
+    # 자세가 완벽하지 않더라도 쥐는 행위 자체에 보상을 주어 물체를 잡는 시도를 늘립니다.
+    return is_engulfing * is_closed
 
 def tcp_floor_collision_penalty(env: ManagerBasedRLEnv, asset_name: str, pick_hand_regex: str, object_name: str) -> torch.Tensor:
     """TCP(그리퍼 끝)가 바닥에 부딪히는 것을 방지하기 위해 물체 기본 높이의 1/2 밑으로 내려가면 페널티를 부과합니다."""

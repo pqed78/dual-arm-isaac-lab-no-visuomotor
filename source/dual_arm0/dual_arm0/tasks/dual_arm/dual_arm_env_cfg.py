@@ -186,14 +186,14 @@ class RewardsCfg:
     # 1. 오른쪽 팔이 초록색 물체(Object)에 다가갈수록 보상 부여 (Pick 시작)
     pick_reach = RewTerm(
         func=rewards.pick_reach_object, 
-        weight=10.0, 
+        weight=5.0,  # [수정] 10.0 -> 5.0 (다가가는 것의 비중 축소)
         params={"asset_name": "robot", "pick_hand_regex": "panda_hand_0", "object_name": "object"}
     )
     
     # 1-2. 물체 근처에 도달했을 때 그리퍼를 꽉 쥐도록 유도하는 보상
     gripper_close = RewTerm(
         func=rewards.gripper_close_reward,
-        weight=10.0,
+        weight=20.0, # [수정] 10.0 -> 20.0 (그리퍼를 닫는 행위에 대한 강한 인센티브)
         params={
             "asset_name": "robot",
             "pick_hand_regex": "panda_hand_0",
@@ -205,7 +205,7 @@ class RewardsCfg:
     # 1-3. 바닥 충돌 방지 페널티 (TCP가 큐브 중심 높이의 절반 아래로 내려가지 못하도록)
     tcp_floor_penalty = RewTerm(
         func=rewards.tcp_floor_collision_penalty,
-        weight=-100.0,  # 아주 강한 벌점을 주어 바닥에 절대 파고들지 않게 함
+        weight=-20.0,  # [수정] -100.0 -> -20.0 (페널티가 너무 크면 무서워서 아예 안 내려감)
         params={
             "asset_name": "robot",
             "pick_hand_regex": "panda_hand_0",
@@ -216,7 +216,7 @@ class RewardsCfg:
     # 1-4. 완벽한 자세(Top-down & 짧은 축 정렬) 유도 보상
     pick_grasp_pose = RewTerm(
         func=rewards.pick_grasp_pose_reward,
-        weight=5.0,
+        weight=3.0, # [수정] 5.0 -> 3.0 (자세 맞추는 데 집착하지 않도록 비중 축소)
         params={
             "asset_name": "robot",
             "pick_hand_regex": "panda_hand_0",
@@ -228,13 +228,18 @@ class RewardsCfg:
     pick_lift = RewTerm(
         func=rewards.object_lifted_by_pick_arm,
         params={"asset_name": "robot", "pick_hand_regex": "panda_hand_0", "object_name": "object"},
-        weight=15.0, # 잡고 들어올리는 행위 자체가 매우 어렵기 때문에 보상을 대폭 상향!
+        weight=50.0, # [수정] 15.0 -> 50.0 (가장 안 되고 있는 병목이므로 보상을 엄청나게 키움!)
     )
     
     # 3. 들어 올린 물체를 중앙의 핸드오버 지점(HANDOVER_POS)으로 가져올수록 보상 부여
     handover_approach = RewTerm(
         func=rewards.handover_zone_approach,
-        params={"object_name": "object", "handover_pos": HANDOVER_POS},
+        params={
+            "asset_name": "robot",
+            "pick_hand_regex": "panda_hand_0",
+            "object_name": "object", 
+            "handover_pos": HANDOVER_POS
+        },
         weight=20.0,
     )
     
