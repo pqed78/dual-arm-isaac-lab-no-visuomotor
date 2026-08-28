@@ -15,9 +15,10 @@ The goal of this environment is to train an RL policy to complete the following 
   - `action_penalty` (-0.01) & `action_rate_penalty` (-0.05): Penalizes large and sudden actions to induce smooth movement.
   - `tcp_floor_penalty` (-20.0): Penalty for the TCP dropping below the object's resting height to prevent floor collisions. Relaxed to encourage reaching down.
   - `pick_grasp_pose` (3.0): Global posture reward. Weight reduced to prevent getting stuck in local minima just hovering with good pose.
-  - `pick_reach` (5.0): Approach reward. Weight reduced to balance with lifting rewards.
-  - `gripper_close` (20.0): Strongly rewards closing the gripper when engulfing the object (distance < 6cm). Decoupled from pose alignment to encourage grasping attempts.
-  - `pick_lift` (50.0): Massive reward for successfully lifting the object off the table (even slightly), breaking the "Valley of Death" bottleneck.
+  - `pick_reach` (5.0): Reduced weight for simply approaching the object.
+  - `gripper_close` (20.0): Highly incentivized to close fingers when the object is nearby (within 6cm). Pose alignment condition removed to reward any grasping attempt.
+  - `premature_gripper_close` (-5.0): Penalizes the robot for closing its gripper when the object is not within reach (> 6cm) to prevent "fist-bumping" the object away.
+  - `pick_lift` (50.0): Massive jackpot reward for lifting the object even slightly (2mm) off the ground to break out of the hovering local optimum.
   - `handover_approach` (20.0): Reward for bringing the object to the center handover position.
   - `place_reach` (10.0): Reward for the left arm reaching the handover position.
   - `place_object` (25.0): Massive terminal reward for successfully placing the object on the target.
@@ -110,6 +111,7 @@ python scripts/skrl/play.py --task=Isaac-Dual-Arm-v0 --num_envs=64 --checkpoint=
   - `pick_grasp_pose` (3.0): 자세 정렬 보상. 완벽한 자세로 허공에 멈춰있는 꼼수를 막기 위해 비중 축소.
   - `pick_reach` (5.0): 물체로 다가가는 보상 비중 축소.
   - `gripper_close` (20.0): 물체 근처(6cm 이내)에 진입하면 손을 닫도록 유도. 자세 조건(pose alignment)을 제거하여 어설픈 자세라도 쥐려는 시도 자체에 강한 인센티브 부여.
+  - `premature_gripper_close` (-5.0): 큐브가 손 안에 없는데(6cm 밖) 미리 주먹을 쥐고 다가가서 큐브를 쳐서 날려버리는 현상(Fist-bumping) 방지 페널티.
   - `pick_lift` (50.0): 물체를 바닥에서 조금(2mm)이라도 들어 올렸을 때 부여되는 엄청난 보상. '들어 올리기' 병목(Valley of Death)을 돌파하기 위한 핵심 보상.
   - `handover_approach` (20.0): 물체를 중앙 핸드오버 지점으로 가져올 때 주어지는 보상.
   - `place_reach` (10.0): 왼쪽 팔이 핸드오버 지점으로 다가갈 때 주어지는 보상.

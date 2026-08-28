@@ -123,6 +123,6 @@ trainer:
   # 타임스텝별로 순차적으로 루프를 실행시키는 Sequential Trainer 클래스를 지정합니다.
   class: SequentialTrainer
   # 에이전트가 환경에서 수행할 총 누적 시뮬레이션 타임스텝 수입니다.
-  timesteps: 48000
+  timesteps: 1000000
   # 환경 정보를 콘솔 및 로그에 어떤 레벨로 기록할지 설정합니다.
   environment_info: log

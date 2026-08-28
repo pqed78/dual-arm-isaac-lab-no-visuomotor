@@ -127,7 +127,6 @@ class ObservationsCfg:
     # observation groups (정책 네트워크에서 사용할 관측 그룹 초기화)
     policy: PolicyCfg = PolicyCfg()
 
-
 @configclass
 class EventCfg:
     """Configuration for events.
@@ -221,6 +220,18 @@ class RewardsCfg:
             "asset_name": "robot",
             "pick_hand_regex": "panda_hand_0",
             "object_name": "object"
+        }
+    )
+    
+    # 1-5. 큐브가 손 안에 없는데 미리 주먹을 쥐는 행위 방지 (Fist-bumping 페널티)
+    premature_gripper_close = RewTerm(
+        func=rewards.premature_gripper_close_penalty,
+        weight=-5.0,  # 미리 주먹 쥐고 다가가면 감점
+        params={
+            "asset_name": "robot",
+            "pick_hand_regex": "panda_hand_0",
+            "object_name": "object",
+            "gripper_joint_regex": "panda_finger_joint[1-2]_0"
         }
     )
     

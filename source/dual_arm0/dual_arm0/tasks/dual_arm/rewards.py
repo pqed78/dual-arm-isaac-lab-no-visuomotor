@@ -272,3 +272,36 @@ def pick_grasp_pose_reward(env: ManagerBasedRLEnv, asset_name: str, pick_hand_re
     
     # 두 정렬도를 곱하여 최종 자세 보상 반환
     return vertical_alignment * finger_alignment
+
+def premature_gripper_close_penalty(env: ManagerBasedRLEnv, asset_name: str, pick_hand_regex: str, object_name: str, gripper_joint_regex: str) -> torch.Tensor:
+    """큐브가 손가락 사이에 없는데도 미리 주먹을 쥐고 다가가서 큐브를 치고 다니는 행위를 방지하는 페널티입니다."""
+    robot = env.scene[asset_name]
+    obj = env.scene[object_name]
+    
+    # TCP 계산
+    wrist_idx = robot.find_bodies(pick_hand_regex)[0]
+    wrist_pos = robot.data.body_pos_w[:, wrist_idx[0]]
+    wrist_quat = robot.data.body_quat_w[:, wrist_idx[0]]
+    w, x, y, z = wrist_quat[:, 0], wrist_quat[:, 1], wrist_quat[:, 2], wrist_quat[:, 3]
+    z_dir_x = 2.0 * (x * z + w * y)
+    z_dir_y = 2.0 * (y * z - w * x)
+    z_dir_z = 1.0 - 2.0 * (x * x + y * y)
+    z_dir = torch.stack([z_dir_x, z_dir_y, z_dir_z], dim=-1)
+    tcp_pos = wrist_pos + 0.1034 * z_dir
+    
+    obj_pos = obj.data.root_pos_w
+    dist = torch.norm(tcp_pos - obj_pos, dim=-1)
+    
+    # 그리퍼 폭 계산
+    gripper_idx, _ = robot.find_joints(gripper_joint_regex)
+    gripper_pos = robot.data.joint_pos[:, gripper_idx]
+    gripper_width = torch.sum(gripper_pos, dim=-1)
+    
+    # 큐브 중심에서 TCP가 6cm(0.06m)보다 멀면 큐브가 손 안에 없다고 판단 (미포획)
+    not_engulfing = dist > 0.06
+    
+    # 그리퍼가 4cm(0.04m)보다 작게 열려 있으면 주먹을 쥐었다고 판단
+    is_closed = gripper_width < 0.04
+    
+    # 큐브가 멀리 있는데 주먹을 쥐고 있으면 1.0 페널티 반환
+    return (not_engulfing * is_closed).float()
