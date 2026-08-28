@@ -48,10 +48,13 @@ def pick_reach_object(env: ManagerBasedRLEnv, asset_name: str, pick_hand_regex: 
     # 3. 물체로의 하강 보상
     dist_to_obj = torch.norm(tcp_pos - obj_pos, dim=-1)
     
-    # [수정] exp(-10*dist)는 거리가 멀 때 기울기(Gradient)가 0에 수렴해 로봇이 움직이지 않는 문제가 있습니다.
-    # 거리가 멀어도 지속적으로 큐브 방향을 가리키는(Long-tail) 형태의 보상 함수 1 / (1 + 5 * dist) 를 사용합니다.
+    # [수정] 큐브는 단단한 물체입니다. TCP가 큐브의 완벽한 정중앙(0cm)까지 파고들려고 하면 
+    # 충돌(Collision)이 발생해 덜덜 떨게 됩니다. 
+    # 반경 4cm(0.04m) 이내에 들어오면 거리를 0으로 간주해 만점을 주도록 마진(Margin)을 줍니다.
+    dist_to_obj_clamped = torch.clamp(dist_to_obj - 0.04, min=0.0)
+    
     reward_hover = 1.0 / (1.0 + 5.0 * dist_to_hover)
-    approach_reward = 1.0 / (1.0 + 5.0 * dist_to_obj)
+    approach_reward = 1.0 / (1.0 + 5.0 * dist_to_obj_clamped)
     
     # 호버 위치 도달(0.3)과 최종 하강(0.7)을 결합하여, 
     # 허공을 거쳐 큐브로 수직 하강하는 엘리베이터 궤적을 유도합니다.
@@ -203,8 +206,12 @@ def gripper_close_reward(env: ManagerBasedRLEnv, asset_name: str, pick_hand_rege
     dot_product = robot_y_x * cube_y_x + robot_y_y * cube_y_y + robot_y_z * cube_y_z
     pose_alignment = ((-z_dir_z + 1.0) / 2.0) * ((dot_product + 1.0) / 2.0)
 
-    # 1. 포획(Engulfing) 조건: 거리를 조금 더 여유롭게 줍니다 (6cm 이내면 오르기 시작, 2cm면 만점)
-    is_engulfing = torch.clamp((0.06 - dist) / 0.04, 0.0, 1.0)
+    # 1. 포획(Engulfing) 조건: 거리를 조금 더 여유롭게 줍니다 (6cm 이내면 오르기 시작, 4cm 반경 내면 만점)
+    # [추가] 큐브 윗면을 누르고 있으면서(거리는 가깝지만) 쥐는 꼼수를 막기 위해, 
+    # TCP의 Z 높이가 큐브 중심점보다 확실하게 아래로(-0.01 등) 내려왔을 때만 포획으로 인정합니다.
+    # (큐브 중심이 Z=0.02이므로, TCP가 Z=0.03 이하로 내려왔을 때만 인정)
+    is_below_top = (tcp_pos[:, 2] < obj_pos[:, 2] + 0.01).float()
+    is_engulfing = torch.clamp((0.06 - dist) / 0.02, 0.0, 1.0) * is_below_top
     
     # 2. 그리퍼 닫힘 조건: 4cm 이하로 닫히면 만점
     is_closed = torch.clamp((0.08 - gripper_width) / 0.04, 0.0, 1.0)
@@ -232,7 +239,7 @@ def tcp_floor_collision_penalty(env: ManagerBasedRLEnv, asset_name: str, pick_ha
     # 물체의 기본 높이(Resting height) 가져오기
     # obj.data.default_root_state[:, 2]는 환경 초기화 시의 Z 좌표(즉, 큐브의 중심 높이)입니다.
     obj_base_z = obj.data.default_root_state[:, 2]
-    min_height = obj_base_z * 0.5  # 큐브 중심 높이의 절반을 하한선으로 설정
+    min_height = 0.0  # [수정] 큐브 높이의 절반(1cm) 대신 진짜 바닥(0cm)으로 하한선 완화
     
     # min_height보다 아래로 내려간 깊이 (안 내려갔으면 0.0)
     violation = torch.clamp(min_height - tcp_z, min=0.0)
@@ -297,11 +304,14 @@ def premature_gripper_close_penalty(env: ManagerBasedRLEnv, asset_name: str, pic
     gripper_pos = robot.data.joint_pos[:, gripper_idx]
     gripper_width = torch.sum(gripper_pos, dim=-1)
     
-    # 큐브 중심에서 TCP가 6cm(0.06m)보다 멀면 큐브가 손 안에 없다고 판단 (미포획)
-    not_engulfing = dist > 0.06
+    # TCP가 큐브 윗면보다 높이 떠 있으면(Z축 기준) 큐브가 손가락 사이에 없다고 판단
+    is_above_top = tcp_pos[:, 2] > obj_pos[:, 2] + 0.01
+    
+    # 큐브 중심에서 6cm보다 멀거나, 큐브 위를 누르고만 있으면 미포획 상태로 간주
+    not_engulfing = torch.logical_or(dist > 0.06, is_above_top)
     
     # 그리퍼가 4cm(0.04m)보다 작게 열려 있으면 주먹을 쥐었다고 판단
     is_closed = gripper_width < 0.04
     
-    # 큐브가 멀리 있는데 주먹을 쥐고 있으면 1.0 페널티 반환
+    # 큐브가 멀리 있거나 위에 얹혀 있는데 주먹을 쥐고 있으면 페널티 반환
     return (not_engulfing * is_closed).float()

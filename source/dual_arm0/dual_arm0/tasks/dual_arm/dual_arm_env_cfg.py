@@ -14,6 +14,7 @@ from isaaclab.sensors import ContactSensorCfg
 from isaaclab.utils import configclass
 
 import isaaclab.envs.mdp as mdp
+import dual_arm0.tasks.dual_arm.curriculum_events as custom_events
 
 from . import rewards
 from .config.dual_franka_cfg import DUAL_FRANKA_CFG
@@ -46,6 +47,11 @@ class DualArmSceneCfg(InteractiveSceneCfg):
             rigid_props=sim_utils.RigidBodyPropertiesCfg(), # 강체 물리 속성 활성화
             mass_props=sim_utils.MassPropertiesCfg(mass=1.0), # 부딪혀서 날아가지 않게 질량을 1.0kg으로 10배 무겁게 설정
             collision_props=sim_utils.CollisionPropertiesCfg(), # 충돌 속성 활성화
+            physics_material=sim_utils.RigidBodyMaterialCfg(
+                static_friction=2.0,  # [수정] 잡았을 때 미끄러지지(Slip) 않도록 정지 마찰력 대폭 증가
+                dynamic_friction=2.0, # 동마찰력 증가
+                friction_combine_mode="max",
+            ),
             visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.0, 1.0, 0.0)), # 초록색으로 렌더링되도록 색상 지정
         ),
     )
@@ -143,16 +149,11 @@ class EventCfg:
         },
     )
     
-    # 물체 초기화 이벤트 (매 에피소드마다 물체를 지정된 범위 내의 무작위 위치로 스폰)
+    # 물체 초기화 이벤트 (커리큘럼 적용: 처음엔 고정, 점진적으로 랜덤 스폰)
     reset_object = EventTerm(
-        func=mdp.reset_root_state_uniform,
+        func=custom_events.reset_object_with_curriculum,
         mode="reset",
-        params={
-            # 큐브의 기본 회전이 Y축 90도(눕혀짐)이므로, 로컬 X축(roll)을 돌려야 월드 Z축(yaw, 팽이처럼 회전) 기준으로 회전합니다.
-            "pose_range": {"x": (0.1, 0.2), "y": (-0.4, -0.2), "z": (0.00, 0.00), "roll": (-3.14159, 3.14159)},
-            "velocity_range": {},
-            "asset_cfg": SceneEntityCfg("object"),
-        },
+        params={},
     )
 
     # 목표 원(Target) 초기화 이벤트 (매 에피소드마다 원의 위치를 무작위로 스폰)
@@ -185,7 +186,7 @@ class RewardsCfg:
     # 1. 오른쪽 팔이 초록색 물체(Object)에 다가갈수록 보상 부여 (Pick 시작)
     pick_reach = RewTerm(
         func=rewards.pick_reach_object, 
-        weight=5.0,  # [수정] 10.0 -> 5.0 (다가가는 것의 비중 축소)
+        weight=20.0,  # [수정] 5.0 -> 20.0 (허공에 떠있지 않고 끝까지 밀착하도록 가중치 대폭 상향)
         params={"asset_name": "robot", "pick_hand_regex": "panda_hand_0", "object_name": "object"}
     )
     
@@ -204,7 +205,7 @@ class RewardsCfg:
     # 1-3. 바닥 충돌 방지 페널티 (TCP가 큐브 중심 높이의 절반 아래로 내려가지 못하도록)
     tcp_floor_penalty = RewTerm(
         func=rewards.tcp_floor_collision_penalty,
-        weight=-20.0,  # [수정] -100.0 -> -20.0 (페널티가 너무 크면 무서워서 아예 안 내려감)
+        weight=-5.0,  # [수정] -20.0 -> -5.0 (바닥에 닿는 두려움을 줄임)
         params={
             "asset_name": "robot",
             "pick_hand_regex": "panda_hand_0",
