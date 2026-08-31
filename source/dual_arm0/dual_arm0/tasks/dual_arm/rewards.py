@@ -121,8 +121,12 @@ def handover_zone_approach(env: ManagerBasedRLEnv, asset_name: str, pick_hand_re
     tcp_pos = wrist_pos + 0.1034 * z_dir
     is_held = torch.norm(tcp_pos - obj_pos, dim=-1) < 0.10  # pick_lift와 동일하게 10cm로 완화
     
-    is_lifted = obj_pos[:, 2] > 0.1
-    return torch.exp(-5.0 * dist) * is_lifted.float() * is_closed.float() * is_held.float()
+    # [수정] 0.1m 이상 띄워야만 핸드오버 점수를 주는 가혹한 조건 때문에 로봇이 아예 시도를 안 함.
+    # pick_lift와 동일하게 0.022m부터 점진적으로 점수를 주도록 완화 (lift_amt 적용)
+    lift_amt = torch.clamp((obj_pos[:, 2] - 0.022) / 0.078, min=0.0, max=1.0)
+    
+    # [수정] exp(-5.0 * dist)는 거리가 멀면 기울기 소실(Vanishing Gradient)이 발생함. -2.0으로 완화.
+    return torch.exp(-2.0 * dist) * lift_amt * is_closed.float() * is_held.float()
 
 def place_reach_object(env: ManagerBasedRLEnv, asset_name: str, place_hand_regex: str, object_name: str, handover_pos: list) -> torch.Tensor:
     """물체가 핸드오버 구역 내에 있을 때만, 내려놓는 팔(Place Arm) 그리퍼가 물체에 가까워질수록 보상을 줍니다."""
@@ -156,7 +160,8 @@ def place_reach_object(env: ManagerBasedRLEnv, asset_name: str, place_hand_regex
     
     dist = torch.where(is_in_zone, dist_to_obj, dist_to_target)
     
-    return torch.exp(-10.0 * dist)
+    # [수정] exp(-10.0 * dist)는 거리가 멀면 0이 되어버려 학습이 불가능함(Vanishing Gradient). -2.0으로 완화.
+    return torch.exp(-2.0 * dist)
 
 def place_to_target(env: ManagerBasedRLEnv, asset_name: str, place_hand_regex: str, object_name: str, target_name: str) -> torch.Tensor:
     """왼쪽 팔(Place Arm)이 큐브를 쥐고 타겟을 향해 이동할 때 거리 비례 보상을 줍니다 (보상 계곡 방어)."""
@@ -184,7 +189,7 @@ def place_to_target(env: ManagerBasedRLEnv, asset_name: str, place_hand_regex: s
     is_closed = gripper_width < 0.06
     
     dist_to_target_2d = torch.norm(obj_pos[:, :2] - target.data.root_pos_w[:, :2], dim=-1)
-    return torch.exp(-5.0 * dist_to_target_2d) * is_held.float() * is_closed.float()
+    return torch.exp(-2.0 * dist_to_target_2d) * is_held.float() * is_closed.float()
 
 def place_object(env: ManagerBasedRLEnv, asset_name: str, place_hand_regex: str, pick_hand_regex: str, object_name: str, target_name: str) -> torch.Tensor:
     """큐브가 타겟에 안착했고, 양팔 모두 큐브를 쿨하게 놓아주고 물러났을 때 주는 최종 잭팟 보상."""
