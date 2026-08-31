@@ -28,7 +28,7 @@ The goal of this environment is to train an RL policy to complete the following 
   - `place_to_target` (100.0): Highly dense distance reward for moving the object from the handover zone to the target. Prevents a "Reward Valley" drop-off.
   - `place_object` (200.0): Final jackpot reward for successfully placing the object on the target. Upgraded to a "True Place" logic: explicitly requires both arms to open their grippers and move away from the object.
 - **Physics Calibration & Early Termination**: High friction (2.0) applied to the cube (`RigidBodyMaterialCfg`). The episode terminates early if the object falls off the table (`Z < -0.1`), drastically improving sample efficiency.
-- **Curriculum Learning**: Progress-based randomized spawning (`curriculum_events.py`) to transition the robot from a fixed tutorial state to full 360-degree rotational generalization.
+- **Curriculum Learning**: Progress-based randomized spawning (`curriculum_events.py`) to transition the robot from a fixed tutorial state to full 360-degree rotational generalization. When resuming from a checkpoint (`--checkpoint`), the curriculum automatically skips the tutorial phase and instantly applies maximum randomization (`progress=1.0`).
 - **High-Capacity Neural Network**: SKRL PPO layers expanded to `[1024, 512, 256]` to memorize the complex kinematics of dual-arm multi-stage handover.
 - **Scalable RL Setup**: Configured to run thousands of environments in parallel (e.g., `num_envs=4096`).
 
@@ -130,7 +130,7 @@ python scripts/skrl/play.py --task=Isaac-Dual-Arm-v0 --num_envs=64 --checkpoint=
   - `place_to_target` (100.0): 왼쪽 팔이 큐브를 들고 타겟을 향해 다가갈 때 주어지는 초밀집(Dense) 거리 비례 보상. 핸드오버 구역을 벗어날 때 발생하는 **'보상 계곡(Reward Valley)' 방어 로직**.
   - `place_object` (200.0): 최종 타겟에 안착했을 때 터지는 잭팟 보상. 불도저 꼼수를 막으면서도 **진정한 내려놓기(True Place)**를 유도하기 위해, 타겟 안착 후 양팔 모두 그립을 열고 멀리 물러났을 때만 점수를 주도록 재설계됨.
 - **물리 엔진 최적화 & 조기 종료(Early Termination)**: 큐브에 고무 수준의 높은 마찰력(2.0)을 부여. 큐브가 책상 아래(`Z < -0.1`)로 떨어지면 에피소드를 즉시 리셋하여 허공에 헛손질하며 낭비되는 시간을 없애고 샘플 효율을 극대화함.
-- **커리큘럼 학습 (Curriculum Learning)**: `curriculum_events.py`를 통해 큐브 스폰 난이도를 점진적으로 올림. (고정된 위치 -> 넓은 범위 & 360도 회전) 일반화 붕괴(Curriculum Shock) 방지.
+- **커리큘럼 학습 (Curriculum Learning)**: `curriculum_events.py`를 통해 큐브 스폰 난이도를 점진적으로 올림. (고정된 위치 -> 넓은 범위 & 360도 회전) 체크포인트(`--checkpoint`)로 이어서 학습할 경우, 튜토리얼 단계를 건너뛰고 즉시 최고 난이도(progress=1.0)의 무작위 스폰이 적용되도록 개선되었습니다.
 - **대용량 신경망 (High-Capacity Neural Network)**: 듀얼 암의 복잡한 역운동학(IK) 매핑과 다단계 콤보 동작을 기억할 수 있도록 SKRL PPO 모델 용량을 `[1024, 512, 256]`으로 대폭 확장.
 - **대규모 병렬 처리**: 수천 개의 환경을 동시에 실행하도록 구성되어 있습니다 (예: `num_envs=4096`).
 
