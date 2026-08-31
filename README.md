@@ -11,18 +11,22 @@ The goal of this environment is to train an RL policy to complete the following 
 
 ## Features
 - **Custom Scene Configuration (`DualArmSceneCfg`)**: Instantiates a ground plane, two Franka arms, a green cylinder object, and a red target marker.
-- **Custom Reward Functions**: Dense reward shaping to guide the agents through the complex handover task. The reward system is designed to prevent local minima and exploits:
+- **Comprehensive Observations**: The policy observation space now includes full 7D poses (Position + Quaternion) for both TCPs (`pick_tcp_quat`, `place_tcp_quat`). This allows the agent to correctly orient its wrist to match the randomly rotated cube during curriculum learning.
+- **Custom Reward Functions**: Dense reward shaping to guide the agents through the complex handover task. The reward system is meticulously designed to prevent local minima and RL exploits:
   - `action_penalty` (-0.01) & `action_rate_penalty` (-0.05): Penalizes large and sudden actions to induce smooth movement.
-  - `tcp_floor_penalty` (-5.0): Penalty for the TCP dropping below the floor (0.0). Relaxed to encourage reaching down without fear.
-  - `pick_grasp_pose` (3.0): Global posture reward. Helps the robot align its wrist with the short axis of the cube.
-  - `pick_reach` (20.0): Highly incentivized reward for bringing the TCP within a 4cm radius of the cube center.
-  - `gripper_close` (20.0): Reward for closing fingers, restricted by a Z-axis condition (`is_below_top`) so the robot only gets rewarded if the cube is literally between its fingers (not resting on top).
-  - `premature_gripper_close` (-5.0): Penalizes the robot for closing its gripper when the object is > 6cm away or if the TCP is resting on top of the cube, preventing "fist-bumping" or "grinding" exploits.
-  - `pick_lift` (50.0): Massive jackpot reward for lifting the object even slightly (2.2cm) off the ground.
-  - `handover_approach` (20.0): Reward for bringing the object to the center handover position.
-  - `place_reach` (10.0): Reward for the left arm reaching the handover position.
-  - `place_object` (25.0): Massive terminal reward for successfully placing the object on the target.
-- **Physics Calibration**: High static and dynamic friction (2.0) applied to the cube (`RigidBodyMaterialCfg`) to prevent slippage during grasping.
+  - `tcp_floor_penalty` (-5.0): Penalty for the TCP dropping below the floor (0.0).
+  - `pick_grasp_pose` (10.0): Global posture reward. Highly incentivizes the robot to align its wrist with the short axis of the cube. Supports 180-degree symmetric grips (`torch.abs` dot product) to prevent orientation confusion.
+  - `pick_reach` (20.0): Employs a **Dynamic Target** to enforce a strict "Elevator Drop" trajectory (hovers 12cm above the cube until XY is aligned, then drops vertically). Distance margin was aggressively tightened (4cm -> 1.5cm) to prevent the "Edge Pinching" local minimum and force a secure, deep grip.
+  - `gripper_close` (20.0): Reward for closing fingers around the cube. Height constraints were relaxed to allow grasping the top edges of the cube.
+  - `premature_gripper_close` (-0.5): Mildly penalizes the robot for closing its gripper when the object is far away to prevent fist-bumping without freezing exploration.
+  - `pick_lift` (50.0): Massive jackpot reward for lifting the object off the ground.
+  - `handover_approach` (20.0): Reward for bringing the object to the center handover position. Explicitly requires the TCP to be holding the object to prevent "Batting/Flicking" exploits.
+  - `place_reach` (10.0): Reward for the left arm reaching the handover position, activated only when the right arm brings it to the zone.
+  - `place_gripper_close` (20.0): Reward for the left arm closing its gripper around the object during handover.
+  - `pick_release` (20.0): Rewards the right arm for opening its gripper once the left arm has secured the object. Crucial for breaking the "Tug-of-War" & "Statue" local minima.
+  - `place_to_target` (100.0): Highly dense distance reward for moving the object from the handover zone to the target. Prevents a "Reward Valley" drop-off.
+  - `place_object` (200.0): Final jackpot reward for successfully placing the object on the target. Increased by 8x to heavily incentivize task completion over hovering. Explicitly requires the left arm to be holding the object and the right arm to be released.
+- **Physics Calibration**: High friction (2.0) applied to the cube (`RigidBodyMaterialCfg`). Cube is spawned at a slight hover (Z=0.025) to prevent explosive ground clipping upon reset.
 - **Curriculum Learning**: Progress-based randomized spawning (`curriculum_events.py`) to transition the robot from a fixed tutorial state to full 360-degree rotational generalization.
 - **High-Capacity Neural Network**: SKRL PPO layers expanded to `[1024, 512, 256]` to memorize the complex kinematics of dual-arm multi-stage handover.
 - **Scalable RL Setup**: Configured to run thousands of environments in parallel (e.g., `num_envs=4096`).
@@ -107,19 +111,23 @@ python scripts/skrl/play.py --task=Isaac-Dual-Arm-v0 --num_envs=64 --checkpoint=
 *참고: 현재 이 리포지토리(`dual-arm-isaac-lab-no-visuomotor`)는 카메라가 포함되지 않은 **상태 기반(State-based)** 관측 환경을 제공합니다. 비전(Vision) 센서를 활용하는 시각 기반 모델은 향후 추가될 예정입니다.*
 
 ## 주요 기능
-- **맞춤형 씬 구성 (`DualArmSceneCfg`)**: 바닥, 두 대의 프랭카 로봇 팔, 초록색 원기둥 물체, 그리고 빨간색 타겟 마커를 생성합니다.
+- **맞춤형 씬 구성 (`DualArmSceneCfg`)**: 바닥, 두 대의 프랭카 로봇 팔, 초록색 큐브 물체, 그리고 빨간색 타겟 마커를 생성합니다.
+- **포괄적인 관측 공간 (Observations)**: 에이전트가 큐브의 무작위 회전에 대응할 수 있도록 양팔의 손끝 3D 회전 각도(`pick_tcp_quat`, `place_tcp_quat`) 및 상대 거리가 관측 공간에 포함됩니다.
 - **세분화된 보상 함수 (Dense Rewards)**: 복잡한 핸드오버 작업을 유도하고 꼼수(Exploits)를 완벽히 차단하기 위해 다음과 같이 구성되어 있습니다:
   - `action_penalty` (-0.01) & `action_rate_penalty` (-0.05): 거칠거나 떨리는 관절 움직임을 억제하여 부드러운 모션 유도.
-  - `tcp_floor_penalty` (-5.0): 바닥 충돌 방지 페널티. 로봇이 밑으로 내려가는 것을 두려워하지 않도록 벌점을 대폭 완화(바닥 0.0 기준).
-  - `pick_grasp_pose` (3.0): 자세 정렬 보상. 큐브의 좁은 면을 향해 손목을 예쁘게 정렬하도록 유도.
-  - `pick_reach` (20.0): 큐브 중심에서 반경 4cm 이내로 TCP를 밀착시키도록 매우 강력한 인센티브 부여.
-  - `gripper_close` (20.0): 손을 닫는 보상. 큐브 윗면을 찍어 누르는 꼼수를 막기 위해, 손가락이 큐브 윗면보다 아래(Z축)로 내려왔을 때만 보상을 주도록 `is_below_top` 조건 추가.
-  - `premature_gripper_close` (-5.0): 큐브가 손 안에 없거나 윗면에 얹혀있을 때 미리 주먹을 쥐고 다가가서 치고 다니는 현상(Fist-bumping) 방지 페널티.
-  - `pick_lift` (50.0): 물체를 바닥에서 조금(2.2cm)이라도 들어 올렸을 때 부여되는 잭팟 보상.
-  - `handover_approach` (20.0): 물체를 중앙 핸드오버 지점으로 가져올 때 주어지는 보상.
-  - `place_reach` (10.0): 왼쪽 팔이 핸드오버 지점으로 다가갈 때 주어지는 보상.
-  - `place_object` (25.0): 물체를 최종 타겟에 성공적으로 내려놓았을 때 주어지는 가장 큰 보상.
-- **물리 엔진 최적화 (Physics Calibration)**: 큐브에 고무 수준의 높은 정지/동마찰력(2.0)을 부여하여 그리퍼로 쥐었을 때 미끄러지는 현상(Slip) 해결.
+  - `tcp_floor_penalty` (-5.0): 바닥 충돌 방지 페널티.
+  - `pick_grasp_pose` (10.0): 자세 정렬 보상. 큐브의 얇은 면을 향해 손목을 완벽히 정렬하도록 유도하며, 그리퍼의 좌우 대칭 특성을 반영하여 180도 뒤집힌 그립도 만점을 주도록 수정됨.
+  - `pick_reach` (20.0): **동적 목표점(Dynamic Target)** 방식을 도입하여, 큐브 정수리 위 12cm 상공으로 비행한 뒤 XY가 정렬되면 수직 하강하는 **'엘리베이터 궤적'**을 완벽하게 강제함. 최근 거리 마진을 4cm에서 1.5cm로 대폭 삭감하여 큐브 모서리만 꼬집는 얕은 그립(Edge Pinching) 꼼수를 원천 차단함.
+  - `gripper_close` (20.0): 손을 닫는 보상. 지나치게 엄격했던 높이 제한을 해제하여 큐브의 윗부분을 쥐어도 보상을 받도록 완화.
+  - `premature_gripper_close` (-0.5): 허공에서 미리 주먹을 쥐는 현상을 방지하되, 얼음(Freeze) 현상을 막기 위해 페널티 비중을 -0.5로 대폭 완화.
+  - `pick_lift` (50.0): 물체를 바닥에서 들어 올렸을 때 부여되는 잭팟 보상.
+  - `handover_approach` (20.0): 물체를 중앙 핸드오버 지점으로 가져올 때 주어지는 보상. 물체를 쳐서 허공에 띄운 뒤 빈 주먹을 쥐어 점수를 얻는 **"야구 배팅(Batting)" 꼼수 차단 로직** 추가.
+  - `place_reach` (10.0): 왼쪽 팔이 핸드오버 지점으로 다가갈 때 주어지는 보상 (오른쪽 팔이 가져왔을 때만 활성화).
+  - `place_gripper_close` (20.0): 왼쪽 팔이 핸드오버 구역에서 물체를 건네받기 위해 주먹을 쥐었을 때 부여되는 보상.
+  - `pick_release` (20.0): 왼쪽 팔이 물체를 꽉 잡은 것을 확인한 뒤, 오른쪽 팔이 그립을 열어 양보했을 때 주어지는 보상. 로봇들이 큐브를 양쪽에서 쥐고 놔주지 않는 **'줄다리기' 및 '동상' 현상 완벽 해결**.
+  - `place_to_target` (100.0): 왼쪽 팔이 큐브를 들고 타겟을 향해 다가갈 때 주어지는 초밀집(Dense) 거리 비례 보상. 핸드오버 구역을 벗어날 때 발생하는 **'보상 계곡(Reward Valley)' 방어 로직**.
+  - `place_object` (200.0): 최종 타겟에 안착했을 때 터지는 잭팟 보상. 기존 25점에서 200점으로 대폭 상향하여 허공에서 버티는 것보다 미션을 완수하는 것이 압도적으로 유리하게 재설계됨. (불도저 꼼수 방지 로직 포함)
+- **물리 엔진 최적화 (Physics Calibration)**: 큐브에 고무 수준의 높은 정지/동마찰력(2.0)을 부여하여 미끄러짐 방지. 스폰 시 큐브가 바닥과 충돌하여 공중으로 튀어 오르는 버그를 막기 위해 0.5cm 공중에서 스폰되도록 수정.
 - **커리큘럼 학습 (Curriculum Learning)**: `curriculum_events.py`를 통해 큐브 스폰 난이도를 점진적으로 올림. (고정된 위치 -> 넓은 범위 & 360도 회전) 일반화 붕괴(Curriculum Shock) 방지.
 - **대용량 신경망 (High-Capacity Neural Network)**: 듀얼 암의 복잡한 역운동학(IK) 매핑과 다단계 콤보 동작을 기억할 수 있도록 SKRL PPO 모델 용량을 `[1024, 512, 256]`으로 대폭 확장.
 - **대규모 병렬 처리**: 수천 개의 환경을 동시에 실행하도록 구성되어 있습니다 (예: `num_envs=4096`).

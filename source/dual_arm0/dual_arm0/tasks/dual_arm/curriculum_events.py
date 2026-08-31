@@ -63,7 +63,9 @@ def reset_object_with_curriculum(env: ManagerBasedRLEnv, env_ids: torch.Tensor) 
     pos = obj.data.default_root_state[env_ids, :3].clone()
     pos[:, 0] = env_origins[:, 0] + final_x
     pos[:, 1] = env_origins[:, 1] + final_y
-    # Z는 기본 높이 그대로 유지
+    # [수정] Z는 0.02(딱 바닥)일 경우 물리엔진 오차로 인해 바닥과 겹쳐서 공중으로 튀어오르는 현상이 생길 수 있으므로,
+    # 0.025(2.5cm)로 약간 높여서 살짝 떨어지며 안정화되도록 합니다.
+    pos[:, 2] = 0.025
 
     # 3. Rotation 설정 (Roll 적용)
     # 기본은 Y축으로 90도 누워있는 상태: (w=0.7071, x=0, y=0.7071, z=0)

@@ -15,6 +15,7 @@ from isaaclab.utils import configclass
 
 import isaaclab.envs.mdp as mdp
 import dual_arm0.tasks.dual_arm.curriculum_events as custom_events
+import dual_arm0.tasks.dual_arm.observations as custom_obs
 
 from . import rewards
 from .config.dual_franka_cfg import DUAL_FRANKA_CFG
@@ -125,6 +126,17 @@ class ObservationsCfg:
         # Target pose
         target_pos = ObsTerm(func=mdp.root_pos_w, params={"asset_cfg": SceneEntityCfg("target")})
         
+        # TCP poses and relative distances
+        pick_tcp_pos = ObsTerm(func=custom_obs.pick_tcp_pos_w, params={"asset_name": "robot", "pick_hand_regex": "panda_hand_0"})
+        pick_tcp_quat = ObsTerm(func=custom_obs.pick_tcp_quat_w, params={"asset_name": "robot", "pick_hand_regex": "panda_hand_0"})
+        place_tcp_pos = ObsTerm(func=custom_obs.place_tcp_pos_w, params={"asset_name": "robot", "place_hand_regex": "panda_hand"})
+        place_tcp_quat = ObsTerm(func=custom_obs.place_tcp_quat_w, params={"asset_name": "robot", "place_hand_regex": "panda_hand"})
+        
+        # relative distances
+        pick_to_obj = ObsTerm(func=custom_obs.object_to_pick_tcp_relative, params={"asset_name": "robot", "pick_hand_regex": "panda_hand_0", "object_name": "object"})
+        place_to_obj = ObsTerm(func=custom_obs.object_to_place_tcp_relative, params={"asset_name": "robot", "place_hand_regex": "panda_hand", "object_name": "object"})
+        obj_to_target = ObsTerm(func=custom_obs.object_to_target_relative, params={"object_name": "object", "target_name": "target"})
+        
         def __post_init__(self):
             self.enable_corruption = True
             # 정의된 관측 항들을 하나의 텐서로 이어붙여서(concatenate) 반환할지 여부
@@ -216,7 +228,7 @@ class RewardsCfg:
     # 1-4. 완벽한 자세(Top-down & 짧은 축 정렬) 유도 보상
     pick_grasp_pose = RewTerm(
         func=rewards.pick_grasp_pose_reward,
-        weight=3.0, # [수정] 5.0 -> 3.0 (자세 맞추는 데 집착하지 않도록 비중 축소)
+        weight=10.0, # [수정] 3.0 -> 10.0 (그립 방향을 맞추는 것이 필수적이므로 가중치를 높임)
         params={
             "asset_name": "robot",
             "pick_hand_regex": "panda_hand_0",
@@ -227,7 +239,7 @@ class RewardsCfg:
     # 1-5. 큐브가 손 안에 없는데 미리 주먹을 쥐는 행위 방지 (Fist-bumping 페널티)
     premature_gripper_close = RewTerm(
         func=rewards.premature_gripper_close_penalty,
-        weight=-5.0,  # 미리 주먹 쥐고 다가가면 감점
+        weight=-0.5,  # [수정] -5.0 -> -0.5 (초기 학습 시 에이전트가 얼어붙지 않도록 페널티 대폭 완화)
         params={
             "asset_name": "robot",
             "pick_hand_regex": "panda_hand_0",
@@ -262,11 +274,32 @@ class RewardsCfg:
         weight=10.0,
     )
     
-    # 5. 왼쪽 팔이 물체를 빨간색 원(Target) 안에 성공적으로 내려놓으면 가장 큰 최종 보상 부여 (Place 완료)
-    place_object = RewTerm(
-        func=rewards.object_to_target,
+    # 4-2. 왼쪽 팔이 큐브를 넘겨받기 위해 꽉 쥐었을 때 보상 부여 (Place Gripper Close)
+    place_gripper_close = RewTerm(
+        func=rewards.place_gripper_close,
+        params={"asset_name": "robot", "place_hand_regex": "panda_hand", "object_name": "object"},
+        weight=20.0,
+    )
+    
+    # 4-3. 왼쪽 팔이 안전하게 잡았을 때, 오른쪽 팔이 그립을 열고 양보하면 보상 부여 (Pick Release)
+    pick_release = RewTerm(
+        func=rewards.pick_release,
+        params={"asset_name": "robot", "pick_hand_regex": "panda_hand_0", "place_hand_regex": "panda_hand", "object_name": "object"},
+        weight=20.0,
+    )
+    
+    # 5. 왼쪽 팔이 큐브를 쥐고 목표 지점을 향해 내려갈 때 촘촘한 거리 비례 보상 부여 (보상 계곡 극복)
+    place_to_target = RewTerm(
+        func=rewards.place_to_target,
         params={"asset_name": "robot", "place_hand_regex": "panda_hand", "object_name": "object", "target_name": "target"},
-        weight=50.0,
+        weight=100.0,
+    )
+    
+    # 6. 왼쪽 팔이 물체를 빨간색 원(Target) 안에 성공적으로 내려놓고 오른팔이 물러나면 잭팟 보상 (Place 완료)
+    place_object = RewTerm(
+        func=rewards.place_object,
+        params={"asset_name": "robot", "place_hand_regex": "panda_hand", "pick_hand_regex": "panda_hand_0", "object_name": "object", "target_name": "target"},
+        weight=200.0,
     )
 
 
