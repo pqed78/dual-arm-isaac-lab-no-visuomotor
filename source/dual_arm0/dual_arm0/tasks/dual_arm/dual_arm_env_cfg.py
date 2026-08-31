@@ -320,7 +320,7 @@ class TerminationsCfg:
     
     # 물체가 책상(Z=0.0) 밑으로 떨어지면 에피소드 종료 (실패 조건)
     # Z < -0.1 이면 종료 (책상 바닥이 0.0이므로)
-    object_dropped = DoneTerm(func=mdp.root_height_below_minimum, params={"asset_name": "object", "minimum_height": -0.1})
+    object_dropped = DoneTerm(func=mdp.root_height_below_minimum, params={"asset_cfg": SceneEntityCfg("object"), "minimum_height": -0.1})
 
 
 @configclass
