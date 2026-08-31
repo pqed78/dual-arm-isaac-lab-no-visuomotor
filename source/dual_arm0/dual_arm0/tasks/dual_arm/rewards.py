@@ -179,7 +179,7 @@ def place_to_target(env: ManagerBasedRLEnv, asset_name: str, place_hand_regex: s
     return torch.exp(-5.0 * dist_to_target_2d) * is_held.float() * is_closed.float()
 
 def place_object(env: ManagerBasedRLEnv, asset_name: str, place_hand_regex: str, pick_hand_regex: str, object_name: str, target_name: str) -> torch.Tensor:
-    """큐브가 타겟에 안착했고, 왼쪽 팔이 쥐고 있으며, 오른쪽 팔은 놓았을 때 주는 최종 잭팟 보상."""
+    """큐브가 타겟에 안착했고, 양팔 모두 큐브를 쿨하게 놓아주고 물러났을 때 주는 최종 잭팟 보상."""
     obj = env.scene[object_name]
     target = env.scene[target_name]
     robot = env.scene[asset_name]
@@ -189,19 +189,19 @@ def place_object(env: ManagerBasedRLEnv, asset_name: str, place_hand_regex: str,
     target_pos = target.data.root_pos_w
     is_on_target = torch.norm(obj_pos[:, :2] - target_pos[:, :2], dim=-1) < 0.05
     
-    # Left Arm (Place Arm) 조건
+    # Left Arm (Place Arm) 조건: 손을 열고 물러났는지 확인
     wrist_idx_l = robot.find_bodies(place_hand_regex)[0]
     wrist_pos_l = robot.data.body_pos_w[:, wrist_idx_l[0]]
     wrist_quat_l = robot.data.body_quat_w[:, wrist_idx_l[0]]
     w, x, y, z = wrist_quat_l[:, 0], wrist_quat_l[:, 1], wrist_quat_l[:, 2], wrist_quat_l[:, 3]
     z_dir_l = torch.stack([2.0 * (x * z + w * y), 2.0 * (y * z - w * x), 1.0 - 2.0 * (x * x + y * y)], dim=-1)
     tcp_pos_l = wrist_pos_l + 0.1034 * z_dir_l
-    is_held_l = torch.norm(tcp_pos_l - obj_pos, dim=-1) < 0.06
+    is_released_l = torch.norm(tcp_pos_l - obj_pos, dim=-1) > 0.08
     
     gripper_idx_l = robot.find_joints("panda_finger_joint[1-2]$")[0]
-    is_closed_l = torch.sum(robot.data.joint_pos[:, gripper_idx_l], dim=-1) < 0.06
+    is_open_l = torch.sum(robot.data.joint_pos[:, gripper_idx_l], dim=-1) > 0.06
     
-    # Right Arm (Pick Arm) 조건 (물체와 멀어지거나 그립을 열었는지)
+    # Right Arm (Pick Arm) 조건: 물러났는지 확인
     wrist_idx_r = robot.find_bodies(pick_hand_regex)[0]
     wrist_pos_r = robot.data.body_pos_w[:, wrist_idx_r[0]]
     wrist_quat_r = robot.data.body_quat_w[:, wrist_idx_r[0]]
@@ -210,7 +210,7 @@ def place_object(env: ManagerBasedRLEnv, asset_name: str, place_hand_regex: str,
     tcp_pos_r = wrist_pos_r + 0.1034 * z_dir_r
     is_released_r = torch.norm(tcp_pos_r - obj_pos, dim=-1) > 0.1
     
-    return is_on_target.float() * is_held_l.float() * is_closed_l.float() * is_released_r.float()
+    return is_on_target.float() * is_released_l.float() * is_open_l.float() * is_released_r.float()
 
 def place_gripper_close(env: ManagerBasedRLEnv, asset_name: str, place_hand_regex: str, object_name: str) -> torch.Tensor:
     """물체가 허공에 떠 있을 때, 왼쪽 팔(Place Arm)이 큐브 근처에서 주먹을 쥐면 보상."""
@@ -411,3 +411,32 @@ def premature_gripper_close_penalty(env: ManagerBasedRLEnv, asset_name: str, pic
     
     # 큐브가 멀리 있거나 위에 얹혀 있는데 주먹을 쥐고 있으면 페널티 반환
     return (not_engulfing * is_closed).float()
+
+def place_grasp_pose_reward(env: ManagerBasedRLEnv, asset_name: str, place_hand_regex: str, object_name: str, handover_pos: list) -> torch.Tensor:
+    """왼쪽 팔(Place Arm)이 핸드오버 구역에서 큐브의 측면을 수평으로 잡도록 유도하는 보상.
+    오른쪽 팔이 큐브를 위에서 잡고 있으므로, 왼쪽 팔은 옆에서 다가가야 충돌을 피할 수 있습니다.
+    """
+    robot = env.scene[asset_name]
+    obj = env.scene[object_name]
+    
+    # 큐브가 핸드오버 구역 근처에 있을 때만 자세 보상 활성화
+    obj_pos = obj.data.root_pos_w
+    target_pos = torch.tensor(handover_pos, device=env.device).unsqueeze(0)
+    dist_to_handover = torch.norm(obj_pos - target_pos, dim=-1)
+    is_in_zone = dist_to_handover < 0.2
+    
+    wrist_idx = robot.find_bodies(place_hand_regex)[0]
+    wrist_quat = robot.data.body_quat_w[:, wrist_idx[0]]
+    
+    w, x, y, z = wrist_quat[:, 0], wrist_quat[:, 1], wrist_quat[:, 2], wrist_quat[:, 3]
+    
+    # 1. 접근 방향 (TCP Z-axis)이 수평이어야 함 (World Z 성분이 0에 가까워야 함)
+    z_dir_z = 1.0 - 2.0 * (x * x + y * y)
+    horizontal_approach = 1.0 - torch.abs(z_dir_z)
+    
+    # 2. 손가락 닫히는 방향 (TCP Y-axis)이 수평이어야 함 (World Z 성분이 0에 가까워야 함)
+    y_dir_z = 2.0 * (y * z + w * x)
+    horizontal_fingers = 1.0 - torch.abs(y_dir_z)
+    
+    # 두 조건이 모두 만족될 때 점수 부여
+    return horizontal_approach * horizontal_fingers * is_in_zone.float()

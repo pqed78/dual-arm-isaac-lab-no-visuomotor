@@ -22,11 +22,12 @@ The goal of this environment is to train an RL policy to complete the following 
   - `pick_lift` (50.0): Massive jackpot reward for lifting the object off the ground.
   - `handover_approach` (20.0): Reward for bringing the object to the center handover position. Explicitly requires the TCP to be holding the object to prevent "Batting/Flicking" exploits.
   - `place_reach` (10.0): Reward for the left arm reaching the handover position, activated only when the right arm brings it to the zone.
+  - `place_grasp_pose` (10.0): Dense reward for the left arm to approach the cube horizontally and pinch the side faces, preventing collisions with the right arm holding the top.
   - `place_gripper_close` (20.0): Reward for the left arm closing its gripper around the object during handover.
   - `pick_release` (20.0): Rewards the right arm for opening its gripper once the left arm has secured the object. Crucial for breaking the "Tug-of-War" & "Statue" local minima.
   - `place_to_target` (100.0): Highly dense distance reward for moving the object from the handover zone to the target. Prevents a "Reward Valley" drop-off.
-  - `place_object` (200.0): Final jackpot reward for successfully placing the object on the target. Increased by 8x to heavily incentivize task completion over hovering. Explicitly requires the left arm to be holding the object and the right arm to be released.
-- **Physics Calibration**: High friction (2.0) applied to the cube (`RigidBodyMaterialCfg`). Cube is spawned at a slight hover (Z=0.025) to prevent explosive ground clipping upon reset.
+  - `place_object` (200.0): Final jackpot reward for successfully placing the object on the target. Upgraded to a "True Place" logic: explicitly requires both arms to open their grippers and move away from the object.
+- **Physics Calibration & Early Termination**: High friction (2.0) applied to the cube (`RigidBodyMaterialCfg`). The episode terminates early if the object falls off the table (`Z < -0.1`), drastically improving sample efficiency.
 - **Curriculum Learning**: Progress-based randomized spawning (`curriculum_events.py`) to transition the robot from a fixed tutorial state to full 360-degree rotational generalization.
 - **High-Capacity Neural Network**: SKRL PPO layers expanded to `[1024, 512, 256]` to memorize the complex kinematics of dual-arm multi-stage handover.
 - **Scalable RL Setup**: Configured to run thousands of environments in parallel (e.g., `num_envs=4096`).
@@ -123,11 +124,12 @@ python scripts/skrl/play.py --task=Isaac-Dual-Arm-v0 --num_envs=64 --checkpoint=
   - `pick_lift` (50.0): 물체를 바닥에서 들어 올렸을 때 부여되는 잭팟 보상.
   - `handover_approach` (20.0): 물체를 중앙 핸드오버 지점으로 가져올 때 주어지는 보상. 물체를 쳐서 허공에 띄운 뒤 빈 주먹을 쥐어 점수를 얻는 **"야구 배팅(Batting)" 꼼수 차단 로직** 추가.
   - `place_reach` (10.0): 왼쪽 팔이 핸드오버 지점으로 다가갈 때 주어지는 보상 (오른쪽 팔이 가져왔을 때만 활성화).
+  - `place_grasp_pose` (10.0): 왼쪽 팔이 큐브를 측면에서 수평으로 접근하여 잡도록 자세를 유도하는 보상. (오른쪽 팔과의 충돌 방지)
   - `place_gripper_close` (20.0): 왼쪽 팔이 핸드오버 구역에서 물체를 건네받기 위해 주먹을 쥐었을 때 부여되는 보상.
   - `pick_release` (20.0): 왼쪽 팔이 물체를 꽉 잡은 것을 확인한 뒤, 오른쪽 팔이 그립을 열어 양보했을 때 주어지는 보상. 로봇들이 큐브를 양쪽에서 쥐고 놔주지 않는 **'줄다리기' 및 '동상' 현상 완벽 해결**.
   - `place_to_target` (100.0): 왼쪽 팔이 큐브를 들고 타겟을 향해 다가갈 때 주어지는 초밀집(Dense) 거리 비례 보상. 핸드오버 구역을 벗어날 때 발생하는 **'보상 계곡(Reward Valley)' 방어 로직**.
-  - `place_object` (200.0): 최종 타겟에 안착했을 때 터지는 잭팟 보상. 기존 25점에서 200점으로 대폭 상향하여 허공에서 버티는 것보다 미션을 완수하는 것이 압도적으로 유리하게 재설계됨. (불도저 꼼수 방지 로직 포함)
-- **물리 엔진 최적화 (Physics Calibration)**: 큐브에 고무 수준의 높은 정지/동마찰력(2.0)을 부여하여 미끄러짐 방지. 스폰 시 큐브가 바닥과 충돌하여 공중으로 튀어 오르는 버그를 막기 위해 0.5cm 공중에서 스폰되도록 수정.
+  - `place_object` (200.0): 최종 타겟에 안착했을 때 터지는 잭팟 보상. 불도저 꼼수를 막으면서도 **진정한 내려놓기(True Place)**를 유도하기 위해, 타겟 안착 후 양팔 모두 그립을 열고 멀리 물러났을 때만 점수를 주도록 재설계됨.
+- **물리 엔진 최적화 & 조기 종료(Early Termination)**: 큐브에 고무 수준의 높은 마찰력(2.0)을 부여. 큐브가 책상 아래(`Z < -0.1`)로 떨어지면 에피소드를 즉시 리셋하여 허공에 헛손질하며 낭비되는 시간을 없애고 샘플 효율을 극대화함.
 - **커리큘럼 학습 (Curriculum Learning)**: `curriculum_events.py`를 통해 큐브 스폰 난이도를 점진적으로 올림. (고정된 위치 -> 넓은 범위 & 360도 회전) 일반화 붕괴(Curriculum Shock) 방지.
 - **대용량 신경망 (High-Capacity Neural Network)**: 듀얼 암의 복잡한 역운동학(IK) 매핑과 다단계 콤보 동작을 기억할 수 있도록 SKRL PPO 모델 용량을 `[1024, 512, 256]`으로 대폭 확장.
 - **대규모 병렬 처리**: 수천 개의 환경을 동시에 실행하도록 구성되어 있습니다 (예: `num_envs=4096`).

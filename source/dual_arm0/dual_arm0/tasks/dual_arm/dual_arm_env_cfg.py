@@ -274,6 +274,13 @@ class RewardsCfg:
         weight=10.0,
     )
     
+    # 4-1. 왼쪽 팔이 큐브를 측면에서 수평으로 예쁘게 잡도록 자세를 유도하는 보상
+    place_grasp_pose = RewTerm(
+        func=rewards.place_grasp_pose_reward,
+        params={"asset_name": "robot", "place_hand_regex": "panda_hand", "object_name": "object", "handover_pos": HANDOVER_POS},
+        weight=10.0,
+    )
+    
     # 4-2. 왼쪽 팔이 큐브를 넘겨받기 위해 꽉 쥐었을 때 보상 부여 (Place Gripper Close)
     place_gripper_close = RewTerm(
         func=rewards.place_gripper_close,
@@ -311,8 +318,9 @@ class TerminationsCfg:
     # 시간 초과 (에피소드 최대 길이에 도달하면 종료)
     time_out = DoneTerm(func=mdp.time_out, time_out=True)
     
-    # (주석 처리됨) 물체가 특정 높이 이하로 떨어지면 에피소드 종료 (실패 조건)
-    # object_dropped = DoneTerm(func=mdp.root_height_below_minimum, params={"asset_name": "object", "minimum_height": -0.1})
+    # 물체가 책상(Z=0.0) 밑으로 떨어지면 에피소드 종료 (실패 조건)
+    # Z < -0.1 이면 종료 (책상 바닥이 0.0이므로)
+    object_dropped = DoneTerm(func=mdp.root_height_below_minimum, params={"asset_name": "object", "minimum_height": -0.1})
 
 
 @configclass
