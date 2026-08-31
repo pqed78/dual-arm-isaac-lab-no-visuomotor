@@ -100,7 +100,7 @@ def handover_zone_approach(env: ManagerBasedRLEnv, asset_name: str, pick_hand_re
     obj = env.scene[object_name]
     obj_pos = obj.data.root_pos_w
     
-    target_pos = torch.tensor(handover_pos, device=env.device).unsqueeze(0)
+    target_pos = env.scene.env_origins + torch.tensor(handover_pos, device=env.device)
     dist = torch.norm(obj_pos - target_pos, dim=-1)
     
     # 꼼수 방지 1: 물체가 허공에 떠 있더라도, 로봇이 꽉 쥐고(gripper_width < 0.06) 있을 때만 인정
@@ -147,7 +147,7 @@ def place_reach_object(env: ManagerBasedRLEnv, asset_name: str, place_hand_regex
     
     obj_pos = obj.data.root_pos_w
     
-    target_pos = torch.tensor(handover_pos, device=env.device).unsqueeze(0)
+    target_pos = env.scene.env_origins + torch.tensor(handover_pos, device=env.device)
     
     # [수정] 왼팔(Place Arm) 선제 마중 로직 (Pre-positioning)
     # 오른쪽 팔이 물체를 가져오기 전이라도, 왼팔은 미리 핸드오버 구역으로 다가가서 대기하도록 유도합니다.
@@ -436,7 +436,7 @@ def place_grasp_pose_reward(env: ManagerBasedRLEnv, asset_name: str, place_hand_
     
     # 큐브가 핸드오버 구역 근처에 있을 때만 자세 보상 활성화
     obj_pos = obj.data.root_pos_w
-    target_pos = torch.tensor(handover_pos, device=env.device).unsqueeze(0)
+    target_pos = env.scene.env_origins + torch.tensor(handover_pos, device=env.device)
     dist_to_handover = torch.norm(obj_pos - target_pos, dim=-1)
     is_in_zone = dist_to_handover < 0.2
     
