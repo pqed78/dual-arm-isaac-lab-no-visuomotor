@@ -103,11 +103,11 @@ def handover_zone_approach(env: ManagerBasedRLEnv, asset_name: str, pick_hand_re
     target_pos = torch.tensor(handover_pos, device=env.device).unsqueeze(0)
     dist = torch.norm(obj_pos - target_pos, dim=-1)
     
-    # 꼼수 방지 1: 물체가 허공에 떠 있더라도, 로봇이 꽉 쥐고(gripper_width < 0.05) 있을 때만 인정
+    # 꼼수 방지 1: 물체가 허공에 떠 있더라도, 로봇이 꽉 쥐고(gripper_width < 0.06) 있을 때만 인정
     gripper_idx = robot.find_joints("panda_finger_joint.*_0")[0]
     gripper_pos = robot.data.joint_pos[:, gripper_idx]
     gripper_width = torch.sum(gripper_pos, dim=-1)
-    is_closed = gripper_width < 0.05
+    is_closed = gripper_width < 0.06
     
     # 꼼수 방지 2: 로봇이 물체를 쳐서 날려버린(Batting) 뒤 주먹을 쥐고 있는 걸 방지하기 위해, 손끝(TCP)에 물체가 있어야만 인정
     wrist_idx = robot.find_bodies(pick_hand_regex)[0]
@@ -151,9 +151,9 @@ def place_reach_object(env: ManagerBasedRLEnv, asset_name: str, place_hand_regex
     
     # [수정] 왼팔(Place Arm) 선제 마중 로직 (Pre-positioning)
     # 오른쪽 팔이 물체를 가져오기 전이라도, 왼팔은 미리 핸드오버 구역으로 다가가서 대기하도록 유도합니다.
-    # 큐브가 핸드오버 존(15cm 이내)에 들어오면 큐브(obj_pos)를 정확히 겨냥하고, 그 전에는 중앙 허공(target_pos)을 겨냥합니다.
+    # 큐브가 핸드오버 존(30cm 이내)에 들어오면 큐브(obj_pos)를 정확히 겨냥하고, 그 전에는 중앙 허공(target_pos)을 겨냥합니다.
     dist_to_handover = torch.norm(obj_pos - target_pos, dim=-1)
-    is_in_zone = dist_to_handover < 0.15
+    is_in_zone = dist_to_handover < 0.30  # [수정] 0.15 -> 0.30 으로 락온(Lock-on) 반경 2배 확대
     
     dist_to_obj = torch.norm(tcp_pos - obj_pos, dim=-1)
     dist_to_target = torch.norm(tcp_pos - target_pos, dim=-1)
@@ -230,7 +230,9 @@ def place_gripper_close(env: ManagerBasedRLEnv, asset_name: str, place_hand_rege
     robot = env.scene[asset_name]
     obj = env.scene[object_name]
     obj_pos = obj.data.root_pos_w
-    is_lifted = obj_pos[:, 2] > 0.1
+    
+    # [수정] 0.1m 이상 띄워야만 판정하는 것은 가혹함. lift_amt로 점진적 적용.
+    lift_amt = torch.clamp((obj_pos[:, 2] - 0.022) / 0.078, min=0.0, max=1.0)
     
     wrist_idx = robot.find_bodies(place_hand_regex)[0]
     wrist_pos = robot.data.body_pos_w[:, wrist_idx[0]]
@@ -246,7 +248,7 @@ def place_gripper_close(env: ManagerBasedRLEnv, asset_name: str, place_hand_rege
     is_engulfing = torch.clamp((0.06 - dist_to_tcp) / 0.02, 0.0, 1.0)
     is_closed = torch.clamp((0.08 - gripper_width) / 0.04, 0.0, 1.0)
     
-    return is_lifted.float() * is_engulfing * is_closed
+    return lift_amt * is_engulfing * is_closed
 
 def pick_release(env: ManagerBasedRLEnv, asset_name: str, pick_hand_regex: str, place_hand_regex: str, object_name: str) -> torch.Tensor:
     """왼쪽 팔이 큐브를 완벽히 쥐었을 때, 오른쪽 팔이 그립을 풀면 보상."""
@@ -261,7 +263,7 @@ def pick_release(env: ManagerBasedRLEnv, asset_name: str, pick_hand_regex: str, 
     w, x, y, z = wrist_quat_l[:, 0], wrist_quat_l[:, 1], wrist_quat_l[:, 2], wrist_quat_l[:, 3]
     z_dir_l = torch.stack([2.0 * (x * z + w * y), 2.0 * (y * z - w * x), 1.0 - 2.0 * (x * x + y * y)], dim=-1)
     tcp_pos_l = wrist_pos_l + 0.1034 * z_dir_l
-    place_is_held = torch.norm(tcp_pos_l - obj_pos, dim=-1) < 0.06
+    place_is_held = torch.norm(tcp_pos_l - obj_pos, dim=-1) < 0.10  # [수정] 0.06 -> 0.10 으로 널널하게
     
     gripper_idx_l = robot.find_joints("panda_finger_joint[1-2]$")[0]
     place_is_closed = torch.sum(robot.data.joint_pos[:, gripper_idx_l], dim=-1) < 0.06
