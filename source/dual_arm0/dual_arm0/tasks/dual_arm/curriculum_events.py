@@ -21,7 +21,8 @@ def reset_object_with_curriculum(env: ManagerBasedRLEnv, env_ids: torch.Tensor) 
 
     # 평가 모드(play.py)이거나 체크포인트(--checkpoint)로 이어서 학습할 때는
     # 이미 튜토리얼을 뗐다고 간주하고 즉시 최고 난이도(1.0)를 적용합니다.
-    if "play.py" in sys.argv[0] or any("--checkpoint" in arg for arg in sys.argv):
+    # Hydra가 sys.argv를 수정하므로 sys.orig_argv를 사용합니다.
+    if "play.py" in sys.argv[0] or any("--checkpoint" in arg for arg in getattr(sys, "orig_argv", sys.argv)):
         progress = 1.0
 
     print(
