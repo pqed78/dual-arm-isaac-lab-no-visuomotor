@@ -182,7 +182,7 @@ class EventCfg:
 
 
 # 허공에서 왼팔이 오른팔로 물체를 넘겨주는(Handover) 가상의 중간 목표 지점
-HANDOVER_POS = [0.0, 0.0, 0.4]
+HANDOVER_POS = [0.0, 0.2, 0.4]
 
 @configclass
 class RewardsCfg:
