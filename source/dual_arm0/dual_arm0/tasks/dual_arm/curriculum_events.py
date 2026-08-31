@@ -19,6 +19,10 @@ def reset_object_with_curriculum(env: ManagerBasedRLEnv, env_ids: torch.Tensor) 
     # 뇌 용량이 커졌으므로 튜토리얼 기간을 조금 더 넉넉하게 줍니다.
     progress = min(max((step - 2000) / 8000.0, 0.0), 1.0)
 
+    # [수정] 체크포인트로 이어서 학습할 때 핸드오버를 먼저 완벽히 숙달하기 위해
+    # 임시로 커리큘럼(난이도 상승)을 완전히 끕니다. (무조건 고정된 위치에서 시작)
+    progress = 0.0
+
     # 평가 모드(play.py) 대응:
     if "play.py" in sys.argv[0]:
         progress = 1.0
