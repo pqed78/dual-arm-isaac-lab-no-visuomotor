@@ -144,11 +144,19 @@ def place_reach_object(env: ManagerBasedRLEnv, asset_name: str, place_hand_regex
     obj_pos = obj.data.root_pos_w
     
     target_pos = torch.tensor(handover_pos, device=env.device).unsqueeze(0)
+    
+    # [수정] 왼팔(Place Arm) 선제 마중 로직 (Pre-positioning)
+    # 오른쪽 팔이 물체를 가져오기 전이라도, 왼팔은 미리 핸드오버 구역으로 다가가서 대기하도록 유도합니다.
+    # 큐브가 핸드오버 존(15cm 이내)에 들어오면 큐브(obj_pos)를 정확히 겨냥하고, 그 전에는 중앙 허공(target_pos)을 겨냥합니다.
     dist_to_handover = torch.norm(obj_pos - target_pos, dim=-1)
     is_in_zone = dist_to_handover < 0.15
     
-    dist_to_tcp = torch.norm(tcp_pos - obj_pos, dim=-1)
-    return torch.exp(-10.0 * dist_to_tcp) * is_in_zone.float()
+    dist_to_obj = torch.norm(tcp_pos - obj_pos, dim=-1)
+    dist_to_target = torch.norm(tcp_pos - target_pos, dim=-1)
+    
+    dist = torch.where(is_in_zone, dist_to_obj, dist_to_target)
+    
+    return torch.exp(-10.0 * dist)
 
 def place_to_target(env: ManagerBasedRLEnv, asset_name: str, place_hand_regex: str, object_name: str, target_name: str) -> torch.Tensor:
     """왼쪽 팔(Place Arm)이 큐브를 쥐고 타겟을 향해 이동할 때 거리 비례 보상을 줍니다 (보상 계곡 방어)."""
@@ -438,5 +446,5 @@ def place_grasp_pose_reward(env: ManagerBasedRLEnv, asset_name: str, place_hand_
     y_dir_z = 2.0 * (y * z + w * x)
     horizontal_fingers = 1.0 - torch.abs(y_dir_z)
     
-    # 두 조건이 모두 만족될 때 점수 부여
-    return horizontal_approach * horizontal_fingers * is_in_zone.float()
+    # [수정] 조건 제거: 큐브가 오지 않았더라도 항상 예쁜 자세로 마중 나가도록 상시 활성화
+    return horizontal_approach * horizontal_fingers
