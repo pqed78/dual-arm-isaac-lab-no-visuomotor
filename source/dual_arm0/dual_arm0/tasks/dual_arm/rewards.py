@@ -119,7 +119,7 @@ def handover_zone_approach(env: ManagerBasedRLEnv, asset_name: str, pick_hand_re
     z_dir_z = 1.0 - 2.0 * (x * x + y * y)
     z_dir = torch.stack([z_dir_x, z_dir_y, z_dir_z], dim=-1)
     tcp_pos = wrist_pos + 0.1034 * z_dir
-    is_held = torch.norm(tcp_pos - obj_pos, dim=-1) < 0.06
+    is_held = torch.norm(tcp_pos - obj_pos, dim=-1) < 0.10  # pick_lift와 동일하게 10cm로 완화
     
     is_lifted = obj_pos[:, 2] > 0.1
     return torch.exp(-5.0 * dist) * is_lifted.float() * is_closed.float() * is_held.float()
@@ -168,7 +168,7 @@ def place_to_target(env: ManagerBasedRLEnv, asset_name: str, place_hand_regex: s
     
     obj_pos = obj.data.root_pos_w
     dist_to_tcp = torch.norm(tcp_pos - obj_pos, dim=-1)
-    is_held = dist_to_tcp < 0.06
+    is_held = dist_to_tcp < 0.10
     
     gripper_idx = robot.find_joints("panda_finger_joint[1-2]$")[0]
     gripper_pos = robot.data.joint_pos[:, gripper_idx]
