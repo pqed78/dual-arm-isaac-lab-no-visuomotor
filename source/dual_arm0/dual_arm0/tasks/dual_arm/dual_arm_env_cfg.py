@@ -264,7 +264,7 @@ class RewardsCfg:
             "object_name": "object", 
             "handover_pos": HANDOVER_POS
         },
-        weight=20.0,
+        weight=200.0,  # [수정] 20.0 -> 200.0 (가만히 들고만 있는 '동상' 방지. 무조건 중앙으로 오게 만듦)
     )
     
     # 4. 왼쪽 팔이, 핸드오버 지점에 있는 물체를 향해 다가갈수록 보상 부여 (Handover 받기)
