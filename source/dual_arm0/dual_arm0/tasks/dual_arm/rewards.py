@@ -154,8 +154,19 @@ def place_reach_object(env: ManagerBasedRLEnv, asset_name: str, place_hand_regex
     dist_to_handover = torch.norm(obj_pos - target_pos, dim=-1)
     is_in_zone = dist_to_handover < 0.30  # [수정] 0.15 -> 0.30 으로 락온(Lock-on) 반경 2배 확대
     
-    dist_to_obj = torch.norm(tcp_pos - obj_pos, dim=-1)
-    dist_to_target = torch.norm(tcp_pos - target_pos, dim=-1)
+    # [수정] 충돌 방지(Collision Avoidance) 로직 추가
+    # 대기 위치: 중앙 위치에서 살짝 왼쪽(Y=+0.1) 위(Z=+0.1)로 비켜서 대기하여 오른팔의 진로를 방해하지 않음
+    wait_pos = target_pos.clone()
+    wait_pos[:, 1] += 0.1
+    wait_pos[:, 2] += 0.1
+    
+    # 잡기 위치: 큐브의 정중앙은 오른팔이 쥐고 있으므로, 왼팔은 큐브의 한쪽 끝부분(X=-0.04)을 겨냥하여 손가락 겹침 방지
+    # (큐브는 X축 방향으로 10cm 길쭉하게 누워있음)
+    grab_pos = obj_pos.clone()
+    grab_pos[:, 0] -= 0.04
+    
+    dist_to_obj = torch.norm(tcp_pos - grab_pos, dim=-1)
+    dist_to_target = torch.norm(tcp_pos - wait_pos, dim=-1)
     
     dist = torch.where(is_in_zone, dist_to_obj, dist_to_target)
     
