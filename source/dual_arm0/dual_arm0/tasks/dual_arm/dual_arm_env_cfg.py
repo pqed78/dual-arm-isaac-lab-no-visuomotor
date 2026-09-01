@@ -198,7 +198,7 @@ class RewardsCfg:
     # 1. 오른쪽 팔이 초록색 물체(Object)에 다가갈수록 보상 부여 (Pick 시작)
     pick_reach = RewTerm(
         func=rewards.pick_reach_object, 
-        weight=20.0,  # [수정] 5.0 -> 20.0 (허공에 떠있지 않고 끝까지 밀착하도록 가중치 대폭 상향)
+        weight=100.0,  # [수정] 20.0 -> 100.0 (왼팔의 place_reach와 동일한 수준의 추진력 부여)
         params={"asset_name": "robot", "pick_hand_regex": "panda_hand_0", "object_name": "object"}
     )
     
