@@ -181,8 +181,9 @@ class EventCfg:
     )
 
 
-# 허공에서 왼팔이 오른팔로 물체를 넘겨주는(Handover) 가상의 중간 목표 지점
-HANDOVER_POS = [0.3, 0.0, 0.4]
+# 핸드오버 구역 (왼쪽 팔과 오른쪽 팔의 중앙)
+# [수정] Z=0.4는 위에서 아래로 잡는 오른팔에게 물리적 리치 한계(Singularity)를 유발할 정도로 너무 높았습니다. 0.2로 낮춥니다.
+HANDOVER_POS = [0.3, 0.0, 0.2]
 
 @configclass
 class RewardsCfg:

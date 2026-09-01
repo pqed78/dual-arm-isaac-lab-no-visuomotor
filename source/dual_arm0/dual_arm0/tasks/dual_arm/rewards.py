@@ -64,9 +64,9 @@ def object_lifted_by_pick_arm(env: ManagerBasedRLEnv, asset_name: str, pick_hand
     
     obj_pos = obj.data.root_pos_w
     dist = torch.norm(tcp_pos - obj_pos, dim=-1)
-    # [수정] 큐브를 중앙에서 약간 비껴서 잡아도(왼팔이 잡을 공간을 남겨주기 위해) 점수가 깎이지 않도록
-    # 중심 반경 4cm(0.04m) 이내에서는 1.0의 만점을 주고, 그 이후부터 점진적으로 깎입니다.
-    is_near_arm = 1.0 - torch.clamp((dist - 0.04) / 0.06, min=0.0, max=1.0)
+    # [수정] 큐브를 쥐고 이동할 때 살짝 삐뚤어지거나 미끄러져도(Slip) 점수가 폭락하지 않도록
+    # 반경 4cm 이내 만점, 이후 20cm(0.20)에 걸쳐 아주 서서히 깎이도록 극도로 관대하게 변경합니다.
+    is_near_arm = 1.0 - torch.clamp((dist - 0.04) / 0.20, min=0.0, max=1.0)
     
     # [수정] 꼼수 방지 목적으로 넣었던 is_closed(그리퍼 닫힘) 조건 삭제.
     # 이 조건이 있으면 탐험(Exploration) 시 우연히 큐브를 위로 띄우는 것조차 점수를 받지 못하게 되어,
@@ -98,9 +98,9 @@ def handover_zone_approach(env: ManagerBasedRLEnv, asset_name: str, pick_hand_re
     z_dir_z = 1.0 - 2.0 * (x * x + y * y)
     z_dir = torch.stack([z_dir_x, z_dir_y, z_dir_z], dim=-1)
     tcp_pos = wrist_pos + 0.1034 * z_dir
-    # [수정] 큐브 반경 4cm 이내로 쥐면 온전한 소유권(1.0)으로 인정하여 패널티 없음
+    # [수정] 큐브 반경 4cm 이내로 쥐면 온전한 소유권(1.0)으로 인정하여 패널티 없음, 이후 20cm에 걸쳐 서서히 깎임
     dist_to_tcp = torch.norm(tcp_pos - obj_pos, dim=-1)
-    is_held = 1.0 - torch.clamp((dist_to_tcp - 0.04) / 0.06, min=0.0, max=1.0)
+    is_held = 1.0 - torch.clamp((dist_to_tcp - 0.04) / 0.20, min=0.0, max=1.0)
     
     # [수정] 0.1m 이상 띄워야만 핸드오버 점수를 주는 가혹한 조건 때문에 로봇이 아예 시도를 안 함.
     # pick_lift와 동일하게 0.022m부터 점진적으로 점수를 주도록 완화 (lift_amt 적용)
@@ -172,8 +172,11 @@ def place_to_target(env: ManagerBasedRLEnv, asset_name: str, place_hand_regex: s
     
     obj_pos = obj.data.root_pos_w
     dist_to_tcp = torch.norm(tcp_pos - obj_pos, dim=-1)
-    is_held = torch.exp(-10.0 * dist_to_tcp)
-    
+    # 왼팔이 큐브 끝부분을 잡고 있는 상태인지 평가
+    grab_pos = obj_pos.clone()
+    grab_pos[:, 0] -= 0.04
+    dist_to_grab = torch.norm(tcp_pos - grab_pos, dim=-1)
+    is_held = 1.0 - torch.clamp((dist_to_grab - 0.04) / 0.20, min=0.0, max=1.0)    
     gripper_idx = robot.find_joints("panda_finger_joint[1-2]$")[0]
     gripper_width = torch.sum(robot.data.joint_pos[:, gripper_idx], dim=-1)
     is_closed = 1.0 - torch.clamp((gripper_width - 0.04) / 0.04, 0.0, 1.0)
@@ -240,8 +243,8 @@ def place_gripper_close(env: ManagerBasedRLEnv, asset_name: str, place_hand_rege
     gripper_idx = robot.find_joints("panda_finger_joint[1-2]$")[0]
     gripper_width = torch.sum(robot.data.joint_pos[:, gripper_idx], dim=-1)
     
-    # [수정] 왼팔이 큐브 끝부분 반경 4cm 이내에 들어오면 1.0 (감점 없음)
-    is_engulfing = 1.0 - torch.clamp((dist_to_grab - 0.04) / 0.06, min=0.0, max=1.0)
+    # [수정] 왼팔이 큐브 끝부분 반경 4cm 이내에 들어오면 1.0 (감점 없음), 이후 20cm에 걸쳐 서서히 깎임
+    is_engulfing = 1.0 - torch.clamp((dist_to_grab - 0.04) / 0.20, min=0.0, max=1.0)
     
     # [수정] 0.08m 이하일 때만 점수를 주면 역시 학습이 안 됨. 완전히 열린 상태(0.08)부터 닫을수록 점수 증가
     is_closed = 1.0 - torch.clamp(gripper_width / 0.08, 0.0, 1.0)
@@ -261,8 +264,11 @@ def pick_release(env: ManagerBasedRLEnv, asset_name: str, pick_hand_regex: str, 
     w, x, y, z = wrist_quat_l[:, 0], wrist_quat_l[:, 1], wrist_quat_l[:, 2], wrist_quat_l[:, 3]
     z_dir_l = torch.stack([2.0 * (x * z + w * y), 2.0 * (y * z - w * x), 1.0 - 2.0 * (x * x + y * y)], dim=-1)
     tcp_pos_l = wrist_pos_l + 0.1034 * z_dir_l
-    # [수정] 왼팔이 물체를 잡았다는 조건을 거리 기반 exp로 부드럽게 변경
-    place_is_held = torch.exp(-10.0 * torch.norm(tcp_pos_l - obj_pos, dim=-1))
+    # 왼팔이 큐브 끝부분(grab_pos)을 잡았다는 조건을 거리 기반으로 부드럽게 평가
+    grab_pos = obj_pos.clone()
+    grab_pos[:, 0] -= 0.04
+    dist_to_grab = torch.norm(tcp_pos_l - grab_pos, dim=-1)
+    place_is_held = 1.0 - torch.clamp((dist_to_grab - 0.04) / 0.20, min=0.0, max=1.0)
     
     gripper_idx_l = robot.find_joints("panda_finger_joint[1-2]$")[0]
     place_gripper_width = torch.sum(robot.data.joint_pos[:, gripper_idx_l], dim=-1)
