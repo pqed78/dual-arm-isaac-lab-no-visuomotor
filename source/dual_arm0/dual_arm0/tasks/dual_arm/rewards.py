@@ -129,11 +129,7 @@ def place_reach_object(env: ManagerBasedRLEnv, asset_name: str, place_hand_regex
     
     target_pos = env.scene.env_origins + torch.tensor(handover_pos, device=env.device)
     
-    # [수정] 왼팔(Place Arm) 선제 마중 로직 (Pre-positioning)
-    # 오른쪽 팔이 물체를 가져오기 전이라도, 왼팔은 미리 핸드오버 구역으로 다가가서 대기하도록 유도합니다.
-    # 큐브가 핸드오버 존(30cm 이내)에 들어오면 큐브(obj_pos)를 정확히 겨냥하고, 그 전에는 중앙 허공(target_pos)을 겨냥합니다.
     dist_to_handover = torch.norm(obj_pos - target_pos, dim=-1)
-    is_in_zone = dist_to_handover < 0.30  # [수정] 0.15 -> 0.30 으로 락온(Lock-on) 반경 2배 확대
     
     # [수정] 충돌 방지(Collision Avoidance) 로직 추가
     # 대기 위치: 중앙 위치에서 살짝 왼쪽(Y=+0.1) 위(Z=+0.1)로 비켜서 대기하여 오른팔의 진로를 방해하지 않음
@@ -146,10 +142,13 @@ def place_reach_object(env: ManagerBasedRLEnv, asset_name: str, place_hand_regex
     grab_pos = obj_pos.clone()
     grab_pos[:, 0] -= 0.04
     
-    dist_to_obj = torch.norm(tcp_pos - grab_pos, dim=-1)
-    dist_to_target = torch.norm(tcp_pos - wait_pos, dim=-1)
+    # [수정] 30cm 경계선에서 타겟이 순간이동하면 보상이 급락(Reward Cliff)하여 로봇이 경계선을 넘지 못하고 덜덜 떠는 문제(Shaking) 발생!
+    # 따라서 큐브가 40cm에서 10cm 사이로 접근할 때 대기 위치에서 잡기 위치로 자석처럼 부드럽게 이끌리도록 연속적인 보간(Interpolation)을 사용합니다.
+    alpha = torch.clamp((0.40 - dist_to_handover) / 0.30, min=0.0, max=1.0).unsqueeze(-1)
     
-    dist = torch.where(is_in_zone, dist_to_obj, dist_to_target)
+    dynamic_target_pos = (1.0 - alpha) * wait_pos + alpha * grab_pos
+    
+    dist = torch.norm(tcp_pos - dynamic_target_pos, dim=-1)
     
     # [수정] exp(-10.0 * dist)는 거리가 멀면 0이 되어버려 학습이 불가능함(Vanishing Gradient). -2.0으로 완화.
     return torch.exp(-2.0 * dist)
