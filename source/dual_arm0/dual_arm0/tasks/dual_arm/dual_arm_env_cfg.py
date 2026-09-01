@@ -129,12 +129,12 @@ class ObservationsCfg:
         # TCP poses and relative distances
         pick_tcp_pos = ObsTerm(func=custom_obs.pick_tcp_pos_w, params={"asset_name": "robot", "pick_hand_regex": "panda_hand_0"})
         pick_tcp_quat = ObsTerm(func=custom_obs.pick_tcp_quat_w, params={"asset_name": "robot", "pick_hand_regex": "panda_hand_0"})
-        place_tcp_pos = ObsTerm(func=custom_obs.place_tcp_pos_w, params={"asset_name": "robot", "place_hand_regex": "panda_hand"})
-        place_tcp_quat = ObsTerm(func=custom_obs.place_tcp_quat_w, params={"asset_name": "robot", "place_hand_regex": "panda_hand"})
+        place_tcp_pos = ObsTerm(func=custom_obs.place_tcp_pos_w, params={"asset_name": "robot", "place_hand_regex": "panda_hand$"})
+        place_tcp_quat = ObsTerm(func=custom_obs.place_tcp_quat_w, params={"asset_name": "robot", "place_hand_regex": "panda_hand$"})
         
         # relative distances
         pick_to_obj = ObsTerm(func=custom_obs.object_to_pick_tcp_relative, params={"asset_name": "robot", "pick_hand_regex": "panda_hand_0", "object_name": "object"})
-        place_to_obj = ObsTerm(func=custom_obs.object_to_place_tcp_relative, params={"asset_name": "robot", "place_hand_regex": "panda_hand", "object_name": "object"})
+        place_to_obj = ObsTerm(func=custom_obs.object_to_place_tcp_relative, params={"asset_name": "robot", "place_hand_regex": "panda_hand$", "object_name": "object"})
         obj_to_target = ObsTerm(func=custom_obs.object_to_target_relative, params={"object_name": "object", "target_name": "target"})
         
         def __post_init__(self):
@@ -271,42 +271,42 @@ class RewardsCfg:
     # 4. 왼쪽 팔이, 핸드오버 지점에 있는 물체를 향해 다가갈수록 보상 부여 (Handover 받기)
     place_reach = RewTerm(
         func=rewards.place_reach_object,
-        params={"asset_name": "robot", "place_hand_regex": "panda_hand", "object_name": "object", "handover_pos": HANDOVER_POS},
+        params={"asset_name": "robot", "place_hand_regex": "panda_hand$", "object_name": "object", "handover_pos": HANDOVER_POS},
         weight=100.0,
     )
     
     # 4-1. 왼쪽 팔이 큐브를 측면에서 수평으로 예쁘게 잡도록 자세를 유도하는 보상
     place_grasp_pose = RewTerm(
         func=rewards.place_grasp_pose_reward,
-        params={"asset_name": "robot", "place_hand_regex": "panda_hand", "object_name": "object", "handover_pos": HANDOVER_POS},
+        params={"asset_name": "robot", "place_hand_regex": "panda_hand$", "object_name": "object", "handover_pos": HANDOVER_POS},
         weight=10.0,
     )
     
     # 4-2. 왼쪽 팔이 큐브를 넘겨받기 위해 꽉 쥐었을 때 보상 부여 (Place Gripper Close)
     place_gripper_close = RewTerm(
         func=rewards.place_gripper_close,
-        params={"asset_name": "robot", "place_hand_regex": "panda_hand", "object_name": "object"},
+        params={"asset_name": "robot", "place_hand_regex": "panda_hand$", "object_name": "object"},
         weight=50.0,
     )
     
     # 4-3. 왼쪽 팔이 안전하게 잡았을 때, 오른쪽 팔이 그립을 열고 양보하면 보상 부여 (Pick Release)
     pick_release = RewTerm(
         func=rewards.pick_release,
-        params={"asset_name": "robot", "pick_hand_regex": "panda_hand_0", "place_hand_regex": "panda_hand", "object_name": "object"},
+        params={"asset_name": "robot", "pick_hand_regex": "panda_hand_0", "place_hand_regex": "panda_hand$", "object_name": "object"},
         weight=100.0,
     )
     
     # 5. 왼쪽 팔이 큐브를 쥐고 목표 지점을 향해 내려갈 때 촘촘한 거리 비례 보상 부여 (보상 계곡 극복)
     place_to_target = RewTerm(
         func=rewards.place_to_target,
-        params={"asset_name": "robot", "place_hand_regex": "panda_hand", "object_name": "object", "target_name": "target"},
+        params={"asset_name": "robot", "place_hand_regex": "panda_hand$", "object_name": "object", "target_name": "target"},
         weight=200.0,
     )
     
     # 6. 왼쪽 팔이 물체를 빨간색 원(Target) 안에 성공적으로 내려놓고 오른팔이 물러나면 잭팟 보상 (Place 완료)
     place_object = RewTerm(
         func=rewards.place_object,
-        params={"asset_name": "robot", "place_hand_regex": "panda_hand", "pick_hand_regex": "panda_hand_0", "object_name": "object", "target_name": "target"},
+        params={"asset_name": "robot", "place_hand_regex": "panda_hand$", "pick_hand_regex": "panda_hand_0", "object_name": "object", "target_name": "target"},
         weight=1000.0,
     )
 
