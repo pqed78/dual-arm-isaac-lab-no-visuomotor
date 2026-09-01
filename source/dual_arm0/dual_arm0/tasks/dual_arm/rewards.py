@@ -397,9 +397,15 @@ def pick_grasp_pose_reward(env: ManagerBasedRLEnv, asset_name: str, pick_hand_re
     # 로봇이 180도 뒤집어서 완벽하게 잡았을 때 0점을 받게 되어 학습이 꼬이게 됩니다.
     # 그리퍼는 좌우 대칭이므로 절대값을 취해 180도 뒤집힌 자세도 만점을 주도록 수정합니다.
     finger_alignment = torch.abs(dot_product)
+    pose_reward = vertical_alignment * finger_alignment
     
-    # 두 정렬도를 곱하여 최종 자세 보상 반환
-    return vertical_alignment * finger_alignment
+    # [수정] 유저 피드백: "우선 lift를 하면 굳이 아래로 잡고 있을 필요가 없잖어"
+    # 물체가 지면에서 5cm(0.05m) 이상 들리면, 로봇이 팔을 뻗기 편한 자유로운 자세를 취할 수 있도록 자세 강제를 해제(만점 유지)합니다.
+    obj_z = obj.data.root_pos_w[:, 2]
+    is_lifted = torch.clamp((obj_z - 0.022) / 0.028, min=0.0, max=1.0) # 2.2cm ~ 5.0cm
+    
+    # 들려있을수록 무조건 1.0(만점)에 가깝게 보간(Lerp)
+    return torch.lerp(pose_reward, torch.ones_like(pose_reward), is_lifted)
 
 def premature_gripper_close_penalty(env: ManagerBasedRLEnv, asset_name: str, pick_hand_regex: str, object_name: str, gripper_joint_regex: str) -> torch.Tensor:
     """큐브가 손가락 사이에 없는데도 미리 주먹을 쥐고 다가가서 큐브를 치고 다니는 행위를 방지하는 페널티입니다."""
