@@ -38,27 +38,12 @@ def pick_reach_object(env: ManagerBasedRLEnv, asset_name: str, pick_hand_regex: 
     
     obj_pos = obj.data.root_pos_w
     
-    # [수정] 완벽한 수직 하강(엘리베이터 궤적)을 강제하기 위한 동적 목표물(Dynamic Target) 로직
-    xy_dist = torch.norm(tcp_pos[:, :2] - obj_pos[:, :2], dim=-1)
+    # TCP와 물체 사이의 거리를 계산합니다.
+    dist = torch.norm(tcp_pos - obj_pos, dim=-1)
     
-    # XY 정렬도 (0.0 ~ 1.0)
-    # 4cm(0.04m) 밖에서는 0.0 (Hover 높이 유지)
-    # 2cm(0.02m) 이내로 들어오면 1.0 (큐브 높이로 하강)
-    xy_alignment = torch.clamp((0.04 - xy_dist) / 0.02, min=0.0, max=1.0)
-    
-    # 동적 목표 위치: XY는 항상 큐브를 향하되, 
-    # Z(높이)는 XY가 정렬되기 전에는 12cm 상공을 유지하다가, 정렬되면 큐브 높이로 부드럽게 하강합니다.
-    dynamic_target_pos = obj_pos.clone()
-    dynamic_target_pos[:, 2] += 0.12 * (1.0 - xy_alignment)
-    
-    dist_to_dynamic_target = torch.norm(tcp_pos - dynamic_target_pos, dim=-1)
-    
-    # [수정] 마진을 4cm에서 1.5cm로 대폭 줄입니다. 
-    # 기존 4cm 마진은 큐브 정수리 위에서 헛손질을 해도 만점을 주어 로봇이 얕게 집게 만들었습니다.
-    dist_clamped = torch.clamp(dist_to_dynamic_target - 0.015, min=0.0)
-    
-    # 최종 보상 반환
-    return 1.0 / (1.0 + 5.0 * dist_clamped)
+    # 거리가 가까워질수록 1에 수렴하는 연속적인 보상
+    # exp(-10*dist)를 사용하여 멀리서부터 부드럽게 이끌어줍니다.
+    return torch.exp(-10.0 * dist)
 
 def object_lifted_by_pick_arm(env: ManagerBasedRLEnv, asset_name: str, pick_hand_regex: str, object_name: str) -> torch.Tensor:
     """잡는 팔(Pick Arm) 부근에서 물체가 바닥으로부터 일정 높이 이상 들려 올려졌을 때 보상을 줍니다."""
