@@ -284,7 +284,11 @@ def pick_release(env: ManagerBasedRLEnv, asset_name: str, pick_hand_regex: str, 
     # [수정] 오른팔이 놓아주는 것도 연속적인 보상으로 변경 (0.04에서 0.08로 벌릴수록 1.0)
     pick_is_released = torch.clamp((pick_gripper_width - 0.04) / 0.04, 0.0, 1.0)
     
-    return left_secured * pick_is_released
+    # [수정] 물체가 바닥에 있을 때 왼팔이 다가가서 잡고 보상을 훔치는(Farm) 꼼수를 막기 위해,
+    # 핸드오버는 반드시 허공(Z > 10cm)에서 이루어져야만 보상을 주도록 lift_amt를 곱합니다.
+    lift_amt = torch.clamp((obj_pos[:, 2] - 0.05) / 0.05, min=0.0, max=1.0)
+    
+    return left_secured * pick_is_released * lift_amt
 
 def gripper_close_reward(env: ManagerBasedRLEnv, asset_name: str, pick_hand_regex: str, object_name: str, gripper_joint_regex: str) -> torch.Tensor:
     """TCP가 물체 근처에 있을 때, 그리퍼(손가락)를 닫으면 강한 보상을 줍니다."""
