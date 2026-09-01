@@ -46,7 +46,7 @@ class DualArmSceneCfg(InteractiveSceneCfg):
         spawn=sim_utils.CuboidCfg(
             size=(0.04, 0.04, 0.1), # 가로 4cm, 세로 4cm, 높이 10cm의 직육면체 (원기둥 대신 굴러가지 않게 함)
             rigid_props=sim_utils.RigidBodyPropertiesCfg(), # 강체 물리 속성 활성화
-            mass_props=sim_utils.MassPropertiesCfg(mass=1.0), # 부딪혀서 날아가지 않게 질량을 1.0kg으로 10배 무겁게 설정
+            mass_props=sim_utils.MassPropertiesCfg(mass=0.2), # [수정] 1.0kg은 너무 무거워서 들고 이동할 때 놓침. 0.2kg으로 경량화.
             collision_props=sim_utils.CollisionPropertiesCfg(), # 충돌 속성 활성화
             physics_material=sim_utils.RigidBodyMaterialCfg(
                 static_friction=2.0,  # [수정] 잡았을 때 미끄러지지(Slip) 않도록 정지 마찰력 대폭 증가
