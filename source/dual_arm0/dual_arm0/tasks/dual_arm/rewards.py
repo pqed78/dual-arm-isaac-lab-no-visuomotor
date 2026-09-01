@@ -181,15 +181,14 @@ def place_to_target(env: ManagerBasedRLEnv, asset_name: str, place_hand_regex: s
     
     obj_pos = obj.data.root_pos_w
     dist_to_tcp = torch.norm(tcp_pos - obj_pos, dim=-1)
-    is_held = dist_to_tcp < 0.10
+    is_held = torch.exp(-10.0 * dist_to_tcp)
     
     gripper_idx = robot.find_joints("panda_finger_joint[1-2]$")[0]
-    gripper_pos = robot.data.joint_pos[:, gripper_idx]
-    gripper_width = torch.sum(gripper_pos, dim=-1)
-    is_closed = gripper_width < 0.06
+    gripper_width = torch.sum(robot.data.joint_pos[:, gripper_idx], dim=-1)
+    is_closed = 1.0 - torch.clamp((gripper_width - 0.04) / 0.04, 0.0, 1.0)
     
     dist_to_target_2d = torch.norm(obj_pos[:, :2] - target.data.root_pos_w[:, :2], dim=-1)
-    return torch.exp(-2.0 * dist_to_target_2d) * is_held.float() * is_closed.float()
+    return torch.exp(-2.0 * dist_to_target_2d) * is_held * is_closed
 
 def place_object(env: ManagerBasedRLEnv, asset_name: str, place_hand_regex: str, pick_hand_regex: str, object_name: str, target_name: str) -> torch.Tensor:
     """큐브가 타겟에 안착했고, 양팔 모두 큐브를 쿨하게 놓아주고 물러났을 때 주는 최종 잭팟 보상."""
@@ -245,8 +244,11 @@ def place_gripper_close(env: ManagerBasedRLEnv, asset_name: str, place_hand_rege
     gripper_idx = robot.find_joints("panda_finger_joint[1-2]$")[0]
     gripper_width = torch.sum(robot.data.joint_pos[:, gripper_idx], dim=-1)
     
-    is_engulfing = torch.clamp((0.06 - dist_to_tcp) / 0.02, 0.0, 1.0)
-    is_closed = torch.clamp((0.08 - gripper_width) / 0.04, 0.0, 1.0)
+    # [수정] 0.06m 이내일 때만 점수를 주면 희소 보상(Sparse Reward) 문제가 생김. 연속적인 exp로 변경
+    is_engulfing = torch.exp(-10.0 * dist_to_tcp)
+    
+    # [수정] 0.08m 이하일 때만 점수를 주면 역시 학습이 안 됨. 완전히 열린 상태(0.08)부터 닫을수록 점수 증가
+    is_closed = 1.0 - torch.clamp(gripper_width / 0.08, 0.0, 1.0)
     
     return lift_amt * is_engulfing * is_closed
 
@@ -263,18 +265,24 @@ def pick_release(env: ManagerBasedRLEnv, asset_name: str, pick_hand_regex: str, 
     w, x, y, z = wrist_quat_l[:, 0], wrist_quat_l[:, 1], wrist_quat_l[:, 2], wrist_quat_l[:, 3]
     z_dir_l = torch.stack([2.0 * (x * z + w * y), 2.0 * (y * z - w * x), 1.0 - 2.0 * (x * x + y * y)], dim=-1)
     tcp_pos_l = wrist_pos_l + 0.1034 * z_dir_l
-    place_is_held = torch.norm(tcp_pos_l - obj_pos, dim=-1) < 0.10  # [수정] 0.06 -> 0.10 으로 널널하게
+    # [수정] 왼팔이 물체를 잡았다는 조건을 거리 기반 exp로 부드럽게 변경
+    place_is_held = torch.exp(-10.0 * torch.norm(tcp_pos_l - obj_pos, dim=-1))
     
     gripper_idx_l = robot.find_joints("panda_finger_joint[1-2]$")[0]
-    place_is_closed = torch.sum(robot.data.joint_pos[:, gripper_idx_l], dim=-1) < 0.06
-    left_secured = place_is_held & place_is_closed
+    place_gripper_width = torch.sum(robot.data.joint_pos[:, gripper_idx_l], dim=-1)
+    
+    # [수정] 왼팔이 닫힌 정도를 연속적인 비율로 계산 (0.08에서 0.04로 갈수록 1.0)
+    place_is_closed = 1.0 - torch.clamp((place_gripper_width - 0.04) / 0.04, 0.0, 1.0)
+    left_secured = place_is_held * place_is_closed
     
     # Right Arm Release Check
     gripper_idx_r = robot.find_joints("panda_finger_joint[1-2]_0")[0]
     pick_gripper_width = torch.sum(robot.data.joint_pos[:, gripper_idx_r], dim=-1)
-    pick_is_released = pick_gripper_width > 0.07 # 7cm 이상 벌림
     
-    return left_secured.float() * pick_is_released.float()
+    # [수정] 오른팔이 놓아주는 것도 연속적인 보상으로 변경 (0.04에서 0.08로 벌릴수록 1.0)
+    pick_is_released = torch.clamp((pick_gripper_width - 0.04) / 0.04, 0.0, 1.0)
+    
+    return left_secured * pick_is_released
 
 def gripper_close_reward(env: ManagerBasedRLEnv, asset_name: str, pick_hand_regex: str, object_name: str, gripper_joint_regex: str) -> torch.Tensor:
     """TCP가 물체 근처에 있을 때, 그리퍼(손가락)를 닫으면 강한 보상을 줍니다."""
