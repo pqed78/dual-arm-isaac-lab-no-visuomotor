@@ -5,10 +5,11 @@ from isaaclab.envs import ManagerBasedRLEnv
 import sys
 
 
-def reset_object_with_curriculum(env: ManagerBasedRLEnv, env_ids: torch.Tensor) -> dict:
+def reset_object_with_curriculum(env: ManagerBasedRLEnv, env_ids: torch.Tensor, enable_curriculum: bool = True) -> dict:
     """커리큘럼(Curriculum)이 적용된 큐브 초기화 함수입니다.
     초반에는 고정된 위치에서 시작하여 학습 난이도를 낮추고,
     점진적으로 흩뿌리는 범위를 넓혀 최종적으로 넓은 범위와 무작위 회전을 소화하게 합니다.
+    enable_curriculum이 False면 처음부터 최고 난이도(무작위 스폰)로 시작합니다.
     """
 
     # env.common_step_counter는 물리 스텝 수입니다.
@@ -21,8 +22,8 @@ def reset_object_with_curriculum(env: ManagerBasedRLEnv, env_ids: torch.Tensor) 
 
     # 평가 모드(play.py)이거나 체크포인트(--checkpoint)로 이어서 학습할 때는
     # 이미 튜토리얼을 뗐다고 간주하고 즉시 최고 난이도(1.0)를 적용합니다.
-    # Hydra가 sys.argv를 수정하므로 sys.orig_argv를 사용합니다.
-    if "play.py" in sys.argv[0] or any("--checkpoint" in arg for arg in getattr(sys, "orig_argv", sys.argv)):
+    # 또한 enable_curriculum 설정이 False일 때도 즉시 1.0을 적용합니다.
+    if not enable_curriculum or "play.py" in sys.argv[0] or any("--checkpoint" in arg for arg in getattr(sys, "orig_argv", sys.argv)):
         progress = 1.0
 
     print(

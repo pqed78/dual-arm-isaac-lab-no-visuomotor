@@ -165,7 +165,7 @@ class EventCfg:
     reset_object = EventTerm(
         func=custom_events.reset_object_with_curriculum,
         mode="reset",
-        params={},
+        params={"enable_curriculum": False}, # [수정] 튜토리얼(고정 스폰) 모드를 끌 수 있는 옵션. False면 처음부터 무작위 스폰.
     )
 
     # 목표 원(Target) 초기화 이벤트 (매 에피소드마다 원의 위치를 무작위로 스폰)
