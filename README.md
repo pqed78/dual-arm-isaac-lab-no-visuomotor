@@ -15,19 +15,19 @@ The goal of this environment is to train an RL policy to complete the following 
 - **Custom Reward Functions**: Dense reward shaping to guide the agents through the complex handover task. The reward system is meticulously designed to prevent local minima and RL exploits:
   - `action_penalty` (-0.01) & `action_rate_penalty` (-0.05): Penalizes large and sudden actions to induce smooth movement.
   - `tcp_floor_penalty` (-5.0): Penalty for the TCP dropping below the floor (0.0).
-  - `pick_grasp_pose` (10.0): Global posture reward. Highly incentivizes the robot to align its wrist with the short axis of the cube. Supports 180-degree symmetric grips (`torch.abs` dot product) to prevent orientation confusion.
-  - `pick_reach` (20.0): Employs a **Dynamic Target** to enforce a strict "Elevator Drop" trajectory (hovers 12cm above the cube until XY is aligned, then drops vertically). Distance margin was aggressively tightened (4cm -> 1.5cm) to prevent the "Edge Pinching" local minimum and force a secure, deep grip.
-  - `gripper_close` (20.0): Reward for closing fingers around the cube. Height constraints were relaxed to allow grasping the top edges of the cube.
-  - `premature_gripper_close` (-0.5): Mildly penalizes the robot for closing its gripper when the object is far away to prevent fist-bumping without freezing exploration.
-  - `pick_lift` (50.0): Massive jackpot reward for lifting the object off the ground.
-  - `handover_approach` (20.0): Reward for bringing the object to the center handover position. Explicitly requires the TCP to be holding the object to prevent "Batting/Flicking" exploits.
-  - `place_reach` (10.0): Reward for the left arm reaching the handover position, activated only when the right arm brings it to the zone.
-  - `place_grasp_pose` (10.0): Dense reward for the left arm to approach the cube horizontally and pinch the side faces, preventing collisions with the right arm holding the top.
-  - `place_gripper_close` (20.0): Reward for the left arm closing its gripper around the object during handover.
-  - `pick_release` (20.0): Rewards the right arm for opening its gripper once the left arm has secured the object. Crucial for breaking the "Tug-of-War" & "Statue" local minima.
-  - `place_to_target` (100.0): Highly dense distance reward for moving the object from the handover zone to the target. Prevents a "Reward Valley" drop-off.
-  - `place_object` (200.0): Final jackpot reward for successfully placing the object on the target. Upgraded to a "True Place" logic: explicitly requires both arms to open their grippers and move away from the object.
-- **Physics Calibration & Early Termination**: High friction (2.0) applied to the cube (`RigidBodyMaterialCfg`). The episode terminates early if the object falls off the table (`Z < -0.1`), drastically improving sample efficiency.
+  - `pick_grasp_pose` (10.0): Forces a strict top-down vertical grasp when the object is on the table. However, once the object is lifted off the ground (Z > 5cm), this constraint is completely released (auto-max reward), allowing the robot to comfortably tilt its wrist to avoid kinematic singularities during horizontal transport.
+  - `pick_reach` (20.0): Employs a **Dynamic Target** to enforce a strict "Elevator Drop" trajectory (hovers 12cm above the cube until XY is aligned, then drops vertically).
+  - `gripper_close` (20.0): Reward for closing fingers around the cube.
+  - `premature_gripper_close` (-0.5): Mildly penalizes the robot for closing its gripper when the object is far away.
+  - `pick_lift` (100.0): Massive jackpot reward for lifting the object off the ground. Object mass was lowered to 0.2kg to ensure stable lifting.
+  - `handover_approach` (200.0): Reward for bringing the object to the handover position. Handover height was lowered to 20cm to circumvent the Right Arm's reach limits. Also features an extremely forgiving 'is_held' margin (20cm decay) to cure the robot's fear of slipping the object during fast movements.
+  - `place_reach` (100.0): Reward for the left arm reaching the handover position. A critical regex typo (`panda_hand` -> `panda_hand$`) that caused the Right Arm to steal all Left Arm rewards was fixed, finally awakening the Left Arm.
+  - `place_grasp_pose` (10.0): Dense reward for the left arm to approach the cube horizontally.
+  - `place_gripper_close` (50.0): Reward for the left arm closing its gripper during handover.
+  - `pick_release` (100.0): Rewards the right arm for opening its gripper once the left arm has secured the object.
+  - `place_to_target` (200.0): Dense distance reward for moving the object from the handover zone to the target.
+  - `place_object` (1000.0): Final jackpot reward for successfully placing the object.
+- **Physics Calibration & Early Termination**: Object mass optimized to 0.2kg with high friction (2.0). The episode terminates early if the object falls off the table (`Z < -0.1`).
 - **Curriculum Learning**: Progress-based randomized spawning (`curriculum_events.py`) to transition the robot from a fixed tutorial state to full 360-degree rotational generalization. When resuming from a checkpoint (`--checkpoint`), the curriculum automatically skips the tutorial phase and instantly applies maximum randomization (`progress=1.0`).
 - **High-Capacity Neural Network**: SKRL PPO layers expanded to `[1024, 512, 256]` to memorize the complex kinematics of dual-arm multi-stage handover.
 - **Scalable RL Setup**: Configured to run thousands of environments in parallel (e.g., `num_envs=4096`).
@@ -117,19 +117,19 @@ python scripts/skrl/play.py --task=Isaac-Dual-Arm-v0 --num_envs=64 --checkpoint=
 - **세분화된 보상 함수 (Dense Rewards)**: 복잡한 핸드오버 작업을 유도하고 꼼수(Exploits)를 완벽히 차단하기 위해 다음과 같이 구성되어 있습니다:
   - `action_penalty` (-0.01) & `action_rate_penalty` (-0.05): 거칠거나 떨리는 관절 움직임을 억제하여 부드러운 모션 유도.
   - `tcp_floor_penalty` (-5.0): 바닥 충돌 방지 페널티.
-  - `pick_grasp_pose` (10.0): 자세 정렬 보상. 큐브의 얇은 면을 향해 손목을 완벽히 정렬하도록 유도하며, 그리퍼의 좌우 대칭 특성을 반영하여 180도 뒤집힌 그립도 만점을 주도록 수정됨.
-  - `pick_reach` (20.0): **동적 목표점(Dynamic Target)** 방식을 도입하여, 큐브 정수리 위 12cm 상공으로 비행한 뒤 XY가 정렬되면 수직 하강하는 **'엘리베이터 궤적'**을 완벽하게 강제함. 최근 거리 마진을 4cm에서 1.5cm로 대폭 삭감하여 큐브 모서리만 꼬집는 얕은 그립(Edge Pinching) 꼼수를 원천 차단함.
-  - `gripper_close` (20.0): 손을 닫는 보상. 지나치게 엄격했던 높이 제한을 해제하여 큐브의 윗부분을 쥐어도 보상을 받도록 완화.
-  - `premature_gripper_close` (-0.5): 허공에서 미리 주먹을 쥐는 현상을 방지하되, 얼음(Freeze) 현상을 막기 위해 페널티 비중을 -0.5로 대폭 완화.
-  - `pick_lift` (50.0): 물체를 바닥에서 들어 올렸을 때 부여되는 잭팟 보상.
-  - `handover_approach` (20.0): 물체를 중앙 핸드오버 지점으로 가져올 때 주어지는 보상. 물체를 쳐서 허공에 띄운 뒤 빈 주먹을 쥐어 점수를 얻는 **"야구 배팅(Batting)" 꼼수 차단 로직** 추가.
-  - `place_reach` (10.0): 왼쪽 팔이 핸드오버 지점으로 다가갈 때 주어지는 보상 (오른쪽 팔이 가져왔을 때만 활성화).
-  - `place_grasp_pose` (10.0): 왼쪽 팔이 큐브를 측면에서 수평으로 접근하여 잡도록 자세를 유도하는 보상. (오른쪽 팔과의 충돌 방지)
-  - `place_gripper_close` (20.0): 왼쪽 팔이 핸드오버 구역에서 물체를 건네받기 위해 주먹을 쥐었을 때 부여되는 보상.
-  - `pick_release` (20.0): 왼쪽 팔이 물체를 꽉 잡은 것을 확인한 뒤, 오른쪽 팔이 그립을 열어 양보했을 때 주어지는 보상. 로봇들이 큐브를 양쪽에서 쥐고 놔주지 않는 **'줄다리기' 및 '동상' 현상 완벽 해결**.
-  - `place_to_target` (100.0): 왼쪽 팔이 큐브를 들고 타겟을 향해 다가갈 때 주어지는 초밀집(Dense) 거리 비례 보상. 핸드오버 구역을 벗어날 때 발생하는 **'보상 계곡(Reward Valley)' 방어 로직**.
-  - `place_object` (200.0): 최종 타겟에 안착했을 때 터지는 잭팟 보상. 불도저 꼼수를 막으면서도 **진정한 내려놓기(True Place)**를 유도하기 위해, 타겟 안착 후 양팔 모두 그립을 열고 멀리 물러났을 때만 점수를 주도록 재설계됨.
-- **물리 엔진 최적화 & 조기 종료(Early Termination)**: 큐브에 고무 수준의 높은 마찰력(2.0)을 부여. 큐브가 책상 아래(`Z < -0.1`)로 떨어지면 에피소드를 즉시 리셋하여 허공에 헛손질하며 낭비되는 시간을 없애고 샘플 효율을 극대화함.
+  - `pick_grasp_pose` (10.0): 큐브가 바닥에 있을 때는 수직(Top-down) 자세를 강제하지만, 지면에서 5cm 이상 들리면 강제를 해제(무조건 만점 부여)하여 로봇이 팔을 뻗기 가장 편한 자세(Kinematic Singularity 회피)를 스스로 찾도록 자유도를 부여함.
+  - `pick_reach` (20.0): **동적 목표점(Dynamic Target)** 방식을 도입하여, 큐브 정수리 위 12cm 상공으로 비행한 뒤 수직 하강하는 **'엘리베이터 궤적'** 강제.
+  - `gripper_close` (20.0): 손을 닫는 보상.
+  - `premature_gripper_close` (-0.5): 허공에서 미리 주먹을 쥐는 현상을 방지.
+  - `pick_lift` (100.0): 물체를 바닥에서 들어 올렸을 때 부여되는 잭팟 보상. 큐브 무게를 1.0kg에서 0.2kg으로 경량화하여 안정적인 리프팅 성공.
+  - `handover_approach` (200.0): 물체를 중앙 핸드오버 지점으로 가져올 때 보상. 인계점 높이를 40cm에서 20cm로 하향하여 오른팔의 물리적 리치(Reach) 한계 극복. 큐브가 미끄러지면 점수가 폭락하는 '떨림 공포증'을 치료하기 위해 잡기 판정 반경을 20cm에 걸쳐 서서히 깎이도록 극도로 관대하게 완화함.
+  - `place_reach` (100.0): 왼쪽 팔이 핸드오버 지점으로 다가갈 때 주어지는 보상. 정규식 오타(`panda_hand` -> `panda_hand$`)로 인해 왼팔 보상을 오른팔이 독식하며 왼팔이 뇌사 상태에 빠졌던 치명적 버그 수정 완료.
+  - `place_grasp_pose` (10.0): 왼쪽 팔이 큐브를 측면에서 수평으로 접근하여 잡도록 자세를 유도.
+  - `place_gripper_close` (50.0): 왼쪽 팔이 핸드오버 구역에서 물체를 건네받기 위해 주먹을 쥐었을 때 보상.
+  - `pick_release` (100.0): 왼쪽 팔이 물체를 꽉 잡은 것을 확인한 뒤, 오른쪽 팔이 그립을 열어 양보했을 때 주어지는 보상.
+  - `place_to_target` (200.0): 왼쪽 팔이 큐브를 들고 타겟을 향해 다가갈 때 주어지는 초밀집(Dense) 거리 비례 보상.
+  - `place_object` (1000.0): 최종 타겟에 안착했을 때 터지는 잭팟 보상.
+- **물리 엔진 최적화 & 조기 종료(Early Termination)**: 큐브 무게(0.2kg) 최적화 및 고마찰력(2.0) 적용. 큐브가 책상 아래(`Z < -0.1`)로 떨어지면 에피소드를 즉시 리셋.
 - **커리큘럼 학습 (Curriculum Learning)**: `curriculum_events.py`를 통해 큐브 스폰 난이도를 점진적으로 올림. (고정된 위치 -> 넓은 범위 & 360도 회전) 체크포인트(`--checkpoint`)로 이어서 학습할 경우, 튜토리얼 단계를 건너뛰고 즉시 최고 난이도(progress=1.0)의 무작위 스폰이 적용되도록 개선되었습니다.
 - **대용량 신경망 (High-Capacity Neural Network)**: 듀얼 암의 복잡한 역운동학(IK) 매핑과 다단계 콤보 동작을 기억할 수 있도록 SKRL PPO 모델 용량을 `[1024, 512, 256]`으로 대폭 확장.
 - **대규모 병렬 처리**: 수천 개의 환경을 동시에 실행하도록 구성되어 있습니다 (예: `num_envs=4096`).
