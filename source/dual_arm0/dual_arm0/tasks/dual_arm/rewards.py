@@ -151,9 +151,10 @@ def place_reach_object(env: ManagerBasedRLEnv, asset_name: str, place_hand_regex
     wait_pos[:, 1] += 0.1
     wait_pos[:, 2] += 0.1
     
-    # 잡기 위치: 큐브의 정중앙. 
-    # (오른팔은 -Y에서 오고 왼팔은 +Y에서 오며, 수직으로 잡으므로 서로 부딪히지 않습니다.)
+    # 잡기 위치: 큐브의 정중앙(X=0.0)은 오른팔이 쥐고 있으므로, 
+    # 마주보더라도 손가락이 겹치지 않게 왼팔은 큐브의 한쪽 끝부분(X=-0.04)을 겨냥합니다.
     grab_pos = obj_pos.clone()
+    grab_pos[:, 0] -= 0.04
     
     # [수정] 30cm 경계선에서 타겟이 순간이동하면 보상이 급락(Reward Cliff)하여 로봇이 경계선을 넘지 못하고 덜덜 떠는 문제(Shaking) 발생!
     # 따라서 큐브가 40cm에서 10cm 사이로 접근할 때 대기 위치에서 잡기 위치로 자석처럼 부드럽게 이끌리도록 연속적인 보간(Interpolation)을 사용합니다.
