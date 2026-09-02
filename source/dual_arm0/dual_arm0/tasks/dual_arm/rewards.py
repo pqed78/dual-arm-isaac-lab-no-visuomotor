@@ -512,8 +512,10 @@ def place_grasp_pose_reward(env: ManagerBasedRLEnv, asset_name: str, place_hand_
     z_dot = tcp_z_x * cube_z_x + tcp_z_y * cube_z_y + tcp_z_z * cube_z_z
     approach_alignment = torch.abs(z_dot)
     
-    # 2. 손가락 닫히는 방향 (TCP Y-axis)이 큐브의 X축 (오른팔이 잡지 않은 빈 면)과 정렬되어야 함
-    y_dot = tcp_y_x * cube_x_x + tcp_y_y * cube_x_y + tcp_y_z * cube_x_z
+    # 2. 손가락 닫히는 방향 (TCP Y-axis)이 큐브의 Y축과 정렬되어야 함.
+    # 오른팔이 큐브의 윗면(X축)을 덮고 있으므로, 왼팔이 상하(X축)로 잡으려 하면 오른팔의 손바닥과 충돌합니다.
+    # 따라서 큐브의 긴 축(Z축) 끝에서 다가가서, 오른팔과 동일하게 측면(Y축)을 잡아야 합니다.
+    y_dot = tcp_y_x * cube_y_x + tcp_y_y * cube_y_y + tcp_y_z * cube_y_z
     finger_alignment = torch.abs(y_dot)
     
     # [수정] 큐브가 회전하더라도 큐브의 면에 정확히 맞춰서 잡도록 유도
