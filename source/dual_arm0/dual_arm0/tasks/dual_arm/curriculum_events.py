@@ -34,7 +34,7 @@ def reset_object_with_curriculum(env: ManagerBasedRLEnv, env_ids: torch.Tensor, 
 
     # 기본(쉬운) 위치 설정 (고정)
     base_x = 0.4
-    base_y = -0.5
+    base_y = -0.3
     base_roll = 0.0
 
     # 랜덤 노이즈 생성 (난이도가 0일 때는 노이즈도 0)
@@ -70,25 +70,17 @@ def reset_object_with_curriculum(env: ManagerBasedRLEnv, env_ids: torch.Tensor, 
     # 0.025(2.5cm)로 약간 높여서 살짝 떨어지며 안정화되도록 합니다.
     pos[:, 2] = 0.025
 
-    # 3. Rotation 설정 (Roll 적용)
-    # 기본은 Y축으로 90도 누워있는 상태: (w=0.7071, x=0, y=0.7071, z=0)
-    # 여기에 Roll 회전을 추가하기 위해 쿼터니언 곱셈 적용
-    # Roll 축(로컬 X축) 회전 쿼터니언 계산: [cos(r/2), sin(r/2), 0, 0]
-    roll_half = final_roll / 2.0
-    rw = torch.cos(roll_half)
-    rx = torch.sin(roll_half)
+    # 3. Rotation 설정 (Yaw 적용)
+    # [수정] 큐브를 가로(Y축)로 눕힌 후, 바닥(Z축)을 기준으로 무작위 회전(Yaw) 적용
+    yaw_half = final_roll / 2.0
+    rw = torch.cos(yaw_half)
+    rz = torch.sin(yaw_half)
 
-    # 기본 쿼터니언 q1 = [0.7071, 0, 0.7071, 0]
-    q1_w = torch.full_like(rw, 0.7071)
-    q1_x = torch.zeros_like(rw)
-    q1_y = torch.full_like(rw, 0.7071)
-    q1_z = torch.zeros_like(rw)
-
-    # q1 * q2 쿼터니언 곱셈 수행
-    qw = q1_w * rw - q1_x * rx
-    qx = q1_w * rx + q1_x * rw
-    qy = q1_y * rw + q1_z * rx
-    qz = q1_z * rw - q1_y * rx
+    # Z축 회전 쿼터니언과 Y축 방향 눕히기(Pitch 90도) 쿼터니언을 결합한 공식
+    qw = rw * 0.7071
+    qx = rw * 0.7071
+    qy = rz * 0.7071
+    qz = rz * 0.7071
 
     rot = torch.stack([qw, qx, qy, qz], dim=-1)
 
