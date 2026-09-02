@@ -73,7 +73,8 @@ def object_lifted_by_pick_arm(env: ManagerBasedRLEnv, asset_name: str, pick_hand
     gripper_idx, _ = robot.find_joints("panda_finger_joint[1-2]_0")
     gripper_pos = robot.data.joint_pos[:, gripper_idx]
     gripper_width = torch.sum(gripper_pos, dim=-1)
-    is_closed = 1.0 - torch.clamp(gripper_width / 0.08, min=0.0, max=1.0)
+    # [수정] 큐브 두께가 4cm(0.04)이므로, 0.04까지 닫았을 때 만점(1.0)을 받도록 스케일 조정
+    is_closed = 1.0 - torch.clamp((gripper_width - 0.04) / 0.04, min=0.0, max=1.0)
     
     # 누워있는 상태(높이 0.02m)에서 시작하므로, 아주 미세하게라도(0.022m) 위로 들리면 점수를 주기 시작합니다.
     lift_amt = torch.clamp((obj_pos[:, 2] - 0.022) / 0.078, min=0.0, max=1.0)
@@ -263,8 +264,8 @@ def place_gripper_close(env: ManagerBasedRLEnv, asset_name: str, place_hand_rege
     # [수정] 왼팔이 큐브 끝부분 반경 4cm 이내에 들어오면 1.0 (감점 없음), 이후 20cm에 걸쳐 서서히 깎임
     is_engulfing = 1.0 - torch.clamp((dist_to_grab - 0.04) / 0.20, min=0.0, max=1.0)
     
-    # [수정] 0.08m 이하일 때만 점수를 주면 역시 학습이 안 됨. 완전히 열린 상태(0.08)부터 닫을수록 점수 증가
-    is_closed = 1.0 - torch.clamp(gripper_width / 0.08, 0.0, 1.0)
+    # [수정] 완전히 열린 상태(0.08)부터 시작해서, 큐브 두께(0.04)만큼 닫으면 만점(1.0) 부여
+    is_closed = 1.0 - torch.clamp((gripper_width - 0.04) / 0.04, min=0.0, max=1.0)
     
     return lift_amt * is_engulfing * is_closed
 
