@@ -80,8 +80,8 @@ def reset_object_with_curriculum(env: ManagerBasedRLEnv, env_ids: torch.Tensor, 
 
     # 기본 쿼터니언 q1 = [0.7071, 0, 0.7071, 0]
     q1_w = torch.full_like(rw, 0.7071)
-    q1_x = torch.zeros_like(rw)
-    q1_y = torch.full_like(rw, 0.7071)
+    q1_x = torch.full_like(rw, 0.7071)
+    q1_y = torch.zeros_like(rw)
     q1_z = torch.zeros_like(rw)
 
     # q1 * q2 쿼터니언 곱셈 수행
