@@ -555,7 +555,7 @@ def premature_gripper_close_penalty(env: ManagerBasedRLEnv, asset_name: str, pic
     gripper_width = torch.sum(gripper_pos, dim=-1)
     
     # TCP가 큐브 윗면보다 높이 떠 있으면(Z축 기준) 큐브가 손가락 사이에 없다고 판단
-    is_above_top = tcp_pos[:, 2] > grab_pos[:, 2] + 0.01
+    is_above_top = tcp_pos[:, 2] > grab_pos[:, 2] + 0.05
     
     # 큐브 중심(또는 오프셋 위치)에서 6cm보다 멀거나, 큐브 위를 누르고만 있으면 미포획 상태로 간주
     not_engulfing = torch.logical_or(dist > 0.12, is_above_top)
