@@ -37,15 +37,19 @@ def place_tcp_quat_w(env: ManagerBasedRLEnv, asset_name: str, place_hand_regex: 
     wrist_idx = robot.find_bodies(place_hand_regex)[0]
     return robot.data.body_quat_w[:, wrist_idx[0]]
 
-def object_to_pick_tcp_relative(env: ManagerBasedRLEnv, asset_name: str, pick_hand_regex: str, object_name: str) -> torch.Tensor:
+def object_to_pick_tcp_relative(env: ManagerBasedRLEnv, asset_name: str, pick_hand_regex: str, object_name: str, x_offset: float = 0.0) -> torch.Tensor:
     tcp_pos = pick_tcp_pos_w(env, asset_name, pick_hand_regex)
     obj = env.scene[object_name]
-    return obj.data.root_pos_w - tcp_pos
+    obj_pos = obj.data.root_pos_w.clone()
+    obj_pos[:, 0] += x_offset
+    return obj_pos - tcp_pos
 
-def object_to_place_tcp_relative(env: ManagerBasedRLEnv, asset_name: str, place_hand_regex: str, object_name: str) -> torch.Tensor:
+def object_to_place_tcp_relative(env: ManagerBasedRLEnv, asset_name: str, place_hand_regex: str, object_name: str, x_offset: float = 0.0) -> torch.Tensor:
     tcp_pos = place_tcp_pos_w(env, asset_name, place_hand_regex)
     obj = env.scene[object_name]
-    return obj.data.root_pos_w - tcp_pos
+    obj_pos = obj.data.root_pos_w.clone()
+    obj_pos[:, 0] += x_offset
+    return obj_pos - tcp_pos
 
 def object_to_target_relative(env: ManagerBasedRLEnv, object_name: str, target_name: str) -> torch.Tensor:
     obj = env.scene[object_name]
