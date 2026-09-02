@@ -133,8 +133,8 @@ class ObservationsCfg:
         place_tcp_quat = ObsTerm(func=custom_obs.place_tcp_quat_w, params={"asset_name": "robot", "place_hand_regex": "panda_hand$"})
         
         # relative distances
-        pick_to_obj = ObsTerm(func=custom_obs.object_to_pick_tcp_relative, params={"asset_name": "robot", "pick_hand_regex": "panda_hand_0", "object_name": "object"})
-        place_to_obj = ObsTerm(func=custom_obs.object_to_place_tcp_relative, params={"asset_name": "robot", "place_hand_regex": "panda_hand$", "object_name": "object"})
+        pick_to_obj = ObsTerm(func=custom_obs.object_to_pick_tcp_relative, params={"asset_name": "robot", "pick_hand_regex": "panda_hand_0", "object_name": "object", "x_offset": 0.04})
+        place_to_obj = ObsTerm(func=custom_obs.object_to_place_tcp_relative, params={"asset_name": "robot", "place_hand_regex": "panda_hand$", "object_name": "object", "x_offset": -0.06})
         obj_to_target = ObsTerm(func=custom_obs.object_to_target_relative, params={"object_name": "object", "target_name": "target"})
         
         def __post_init__(self):
@@ -200,7 +200,7 @@ class RewardsCfg:
     pick_reach = RewTerm(
         func=rewards.pick_reach_object, 
         weight=20.0,  # [수정] 호버 꼼수를 삭제했으므로 다시 20.0으로 복구하여 추진력을 줍니다.
-        params={"asset_name": "robot", "pick_hand_regex": "panda_hand_0", "object_name": "object"}
+        params={"asset_name": "robot", "pick_hand_regex": "panda_hand_0", "object_name": "object", "x_offset": 0.04}
     )
     
     # 1-2. 물체 근처에 도달했을 때 그리퍼를 꽉 쥐도록 유도하는 보상
@@ -211,7 +211,8 @@ class RewardsCfg:
             "asset_name": "robot",
             "pick_hand_regex": "panda_hand_0",
             "object_name": "object",
-            "gripper_joint_regex": "panda_finger_joint[1-2]_0"
+            "gripper_joint_regex": "panda_finger_joint[1-2]_0",
+            "x_offset": 0.04
         }
     )
     
@@ -233,7 +234,8 @@ class RewardsCfg:
         params={
             "asset_name": "robot",
             "pick_hand_regex": "panda_hand_0",
-            "object_name": "object"
+            "object_name": "object",
+            "x_offset": 0.04
         }
     )
     
@@ -256,7 +258,8 @@ class RewardsCfg:
             "asset_name": "robot",
             "pick_hand_regex": "panda_hand_0",
             "object_name": "object",
-            "gripper_joint_regex": "panda_finger_joint[1-2]_0"
+            "gripper_joint_regex": "panda_finger_joint[1-2]_0",
+            "x_offset": 0.04
         }
     )
     
@@ -276,7 +279,7 @@ class RewardsCfg:
     # 2. 오른쪽 팔이 물체를 바닥에서 들어 올리면 추가 보상 부여
     pick_lift = RewTerm(
         func=rewards.object_lifted_by_pick_arm,
-        params={"asset_name": "robot", "pick_hand_regex": "panda_hand_0", "object_name": "object"},
+        params={"asset_name": "robot", "pick_hand_regex": "panda_hand_0", "object_name": "object", "x_offset": 0.04},
         weight=100.0, # [수정] 50.0 -> 100.0 (목표 달성 보상을 다가가는 보상보다 무조건 크게 설정)
     )
     

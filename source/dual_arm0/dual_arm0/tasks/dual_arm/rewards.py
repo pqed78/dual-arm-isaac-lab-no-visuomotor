@@ -2,7 +2,7 @@ import torch
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.envs import ManagerBasedRLEnv
 
-def pick_reach_object(env: ManagerBasedRLEnv, asset_name: str, pick_hand_regex: str, object_name: str) -> torch.Tensor:
+def pick_reach_object(env: ManagerBasedRLEnv, asset_name: str, pick_hand_regex: str, object_name: str, x_offset: float = 0.0) -> torch.Tensor:
     """잡는 팔(Pick Arm)의 손끝(TCP)이 물체에 가까워질수록 보상을 줍니다.
     
     Args:
@@ -36,7 +36,8 @@ def pick_reach_object(env: ManagerBasedRLEnv, asset_name: str, pick_hand_regex: 
     # TCP (손끝 중앙) 위치 = 손목 위치 + 10.34cm * Z방향
     tcp_pos = wrist_pos + 0.1034 * z_dir
     
-    obj_pos = obj.data.root_pos_w
+    obj_pos = obj.data.root_pos_w.clone()
+    obj_pos[:, 0] += x_offset
     
     # TCP와 물체 사이의 거리를 계산합니다.
     dist = torch.norm(tcp_pos - obj_pos, dim=-1)
@@ -45,7 +46,7 @@ def pick_reach_object(env: ManagerBasedRLEnv, asset_name: str, pick_hand_regex: 
     # exp(-10*dist)를 사용하여 멀리서부터 부드럽게 이끌어줍니다.
     return torch.exp(-10.0 * dist)
 
-def object_lifted_by_pick_arm(env: ManagerBasedRLEnv, asset_name: str, pick_hand_regex: str, object_name: str) -> torch.Tensor:
+def object_lifted_by_pick_arm(env: ManagerBasedRLEnv, asset_name: str, pick_hand_regex: str, object_name: str, x_offset: float = 0.0) -> torch.Tensor:
     """잡는 팔(Pick Arm) 부근에서 물체가 바닥으로부터 일정 높이 이상 들려 올려졌을 때 보상을 줍니다."""
     robot = env.scene[asset_name]
     obj = env.scene[object_name]
@@ -63,7 +64,9 @@ def object_lifted_by_pick_arm(env: ManagerBasedRLEnv, asset_name: str, pick_hand
     tcp_pos = wrist_pos + 0.1034 * z_dir
     
     obj_pos = obj.data.root_pos_w
-    dist = torch.norm(tcp_pos - obj_pos, dim=-1)
+    obj_pos_offset = obj_pos.clone()
+    obj_pos_offset[:, 0] += x_offset
+    dist = torch.norm(tcp_pos - obj_pos_offset, dim=-1)
     # [수정] 큐브를 쥐고 이동할 때 살짝 삐뚤어지거나 미끄러져도(Slip) 점수가 폭락하지 않도록
     # 반경 4cm 이내 만점, 이후 20cm(0.20)에 걸쳐 아주 서서히 깎이도록 극도로 관대하게 변경합니다.
     is_near_arm = 1.0 - torch.clamp((dist - 0.04) / 0.20, min=0.0, max=1.0)
@@ -331,7 +334,7 @@ def pick_release(env: ManagerBasedRLEnv, asset_name: str, pick_hand_regex: str, 
     
     return left_secured * pick_is_released * lift_amt
 
-def gripper_close_reward(env: ManagerBasedRLEnv, asset_name: str, pick_hand_regex: str, object_name: str, gripper_joint_regex: str) -> torch.Tensor:
+def gripper_close_reward(env: ManagerBasedRLEnv, asset_name: str, pick_hand_regex: str, object_name: str, gripper_joint_regex: str, x_offset: float = 0.0) -> torch.Tensor:
     """TCP가 물체 근처에 있을 때, 그리퍼(손가락)를 닫으면 강한 보상을 줍니다."""
     robot = env.scene[asset_name]
     obj = env.scene[object_name]
@@ -349,7 +352,9 @@ def gripper_close_reward(env: ManagerBasedRLEnv, asset_name: str, pick_hand_rege
     tcp_pos = wrist_pos + 0.1034 * z_dir
     
     obj_pos = obj.data.root_pos_w
-    dist = torch.norm(tcp_pos - obj_pos, dim=-1)
+    obj_pos_offset = obj_pos.clone()
+    obj_pos_offset[:, 0] += x_offset
+    dist = torch.norm(tcp_pos - obj_pos_offset, dim=-1)
     
     # 그리퍼 폭 계산
     gripper_idx, _ = robot.find_joints(gripper_joint_regex)
@@ -430,7 +435,7 @@ def tcp_floor_collision_penalty(env: ManagerBasedRLEnv, asset_name: str, pick_ha
     
     return violation
 
-def pick_grasp_pose_reward(env: ManagerBasedRLEnv, asset_name: str, pick_hand_regex: str, object_name: str) -> torch.Tensor:
+def pick_grasp_pose_reward(env: ManagerBasedRLEnv, asset_name: str, pick_hand_regex: str, object_name: str, x_offset: float = 0.0) -> torch.Tensor:
     """TCP가 수직 아래를 바라보고, 손가락이 물체의 짧은 축(로컬 Y축)에 맞춰지도록 유도하는 보상"""
     robot = env.scene[asset_name]
     obj = env.scene[object_name]
@@ -468,7 +473,9 @@ def pick_grasp_pose_reward(env: ManagerBasedRLEnv, asset_name: str, pick_hand_re
     # [수정] 거리가 멀 때 제자리에서 허공에 대고 자세만 잡으며 점수를 훔치는(Statue) 현상을 막기 위해,
     # 큐브 근처(20cm 이내)에 다가갔을 때만 자세 보상을 주도록 거리에 비례하여 곱합니다.
     obj_pos = obj.data.root_pos_w
-    dist = torch.norm(tcp_pos - obj_pos, dim=-1)
+    obj_pos_offset = obj_pos.clone()
+    obj_pos_offset[:, 0] += x_offset
+    dist = torch.norm(tcp_pos - obj_pos_offset, dim=-1)
     is_near_arm = 1.0 - torch.clamp((dist - 0.04) / 0.20, min=0.0, max=1.0)
     
     # 바닥에서 집어올릴 때의 수직(Top-down) 자세 보상
