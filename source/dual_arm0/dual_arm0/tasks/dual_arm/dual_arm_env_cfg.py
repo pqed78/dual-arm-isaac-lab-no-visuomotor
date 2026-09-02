@@ -229,7 +229,7 @@ class RewardsCfg:
     # 1-4. 완벽한 자세(Top-down & 짧은 축 정렬) 유도 보상
     pick_grasp_pose = RewTerm(
         func=rewards.pick_grasp_pose_reward,
-        weight=10.0, # [수정] 3.0 -> 10.0 (그립 방향을 맞추는 것이 필수적이므로 가중치를 높임)
+        weight=50.0, # [수정] 10.0 -> 50.0 (그립 방향을 맞추는 것이 필수적이므로 가중치를 높임)
         params={
             "asset_name": "robot",
             "pick_hand_regex": "panda_hand_0",

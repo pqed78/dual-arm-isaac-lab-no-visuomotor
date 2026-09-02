@@ -410,16 +410,21 @@ def pick_grasp_pose_reward(env: ManagerBasedRLEnv, asset_name: str, pick_hand_re
     
     # 4. 두 Y축 간의 내적(Dot Product)을 통해 평행도 계산
     dot_product = robot_y_x * cube_y_x + robot_y_y * cube_y_y + robot_y_z * cube_y_z
-    
-    # [수정] 양방향 스피닝 방지를 위한다는 명목으로 정방향(+1.0)만 만점을 주면, 
-    # 로봇이 180도 뒤집어서 완벽하게 잡았을 때 0점을 받게 되어 학습이 꼬이게 됩니다.
-    # 그리퍼는 좌우 대칭이므로 절대값을 취해 180도 뒤집힌 자세도 만점을 주도록 수정합니다.
     finger_alignment = torch.abs(dot_product)
     
-    # [수정] 핸드오버 높이를 0.2m로 낮추었으므로 이제 수직 자세를 유지해도 리치(Reach)에 문제가 없습니다.
-    # 오히려 자세 강제를 풀었더니 손목을 마구 꺾어 큐브가 비틀어지고, 이로 인해 왼팔이 잡기 어려워지는(모양이 안 예뻐지는) 부작용이 생겼습니다.
-    # 다시 엄격하게 수직(Top-down) 자세를 강제하여 큐브가 완벽한 수평을 유지하도록 합니다.
-    return vertical_alignment * finger_alignment
+    # TCP 계산
+    z_dir_x = 2.0 * (x * z + w * y)
+    z_dir_y = 2.0 * (y * z - w * x)
+    z_dir = torch.stack([z_dir_x, z_dir_y, z_dir_z], dim=-1)
+    tcp_pos = robot.data.body_pos_w[:, wrist_idx[0]] + 0.1034 * z_dir
+    
+    # [수정] 거리가 멀 때 제자리에서 허공에 대고 자세만 잡으며 점수를 훔치는(Statue) 현상을 막기 위해,
+    # 큐브 근처(20cm 이내)에 다가갔을 때만 자세 보상을 주도록 거리에 비례하여 곱합니다.
+    obj_pos = obj.data.root_pos_w
+    dist = torch.norm(tcp_pos - obj_pos, dim=-1)
+    is_near_arm = 1.0 - torch.clamp((dist - 0.04) / 0.20, min=0.0, max=1.0)
+    
+    return vertical_alignment * finger_alignment * is_near_arm
 
 def premature_gripper_close_penalty(env: ManagerBasedRLEnv, asset_name: str, pick_hand_regex: str, object_name: str, gripper_joint_regex: str) -> torch.Tensor:
     """큐브가 손가락 사이에 없는데도 미리 주먹을 쥐고 다가가서 큐브를 치고 다니는 행위를 방지하는 페널티입니다."""
