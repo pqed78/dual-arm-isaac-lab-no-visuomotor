@@ -261,7 +261,7 @@ class RewardsCfg:
         }
     )
     
-    # [추가] 왼팔(Place Arm)이 물체가 없는데도 주먹을 쥐고 다가오는 꼼수(Fake Handshake) 방지
+    # 2-5. 큐브가 아직 오지 않았는데 미리 주먹 쥐기 방지
     place_premature_gripper_close = RewTerm(
         func=rewards.premature_gripper_close_penalty,
         weight=-0.5,
@@ -269,7 +269,8 @@ class RewardsCfg:
             "asset_name": "robot",
             "pick_hand_regex": "panda_hand$",
             "object_name": "object",
-            "gripper_joint_regex": "panda_finger_joint[1-2]$"
+            "gripper_joint_regex": "panda_finger_joint[1-2]$",
+            "x_offset": -0.04,
         },
     )
     

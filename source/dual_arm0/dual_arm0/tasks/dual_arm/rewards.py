@@ -466,7 +466,7 @@ def handover_pose_right(env: ManagerBasedRLEnv, asset_name: str, pick_hand_regex
     
     return handover_pose_reward * is_lifted
 
-def premature_gripper_close_penalty(env: ManagerBasedRLEnv, asset_name: str, pick_hand_regex: str, object_name: str, gripper_joint_regex: str) -> torch.Tensor:
+def premature_gripper_close_penalty(env: ManagerBasedRLEnv, asset_name: str, pick_hand_regex: str, object_name: str, gripper_joint_regex: str, x_offset: float = 0.0) -> torch.Tensor:
     """큐브가 손가락 사이에 없는데도 미리 주먹을 쥐고 다가가서 큐브를 치고 다니는 행위를 방지하는 페널티입니다."""
     robot = env.scene[asset_name]
     obj = env.scene[object_name]
@@ -483,7 +483,11 @@ def premature_gripper_close_penalty(env: ManagerBasedRLEnv, asset_name: str, pic
     tcp_pos = wrist_pos + 0.1034 * z_dir
     
     obj_pos = obj.data.root_pos_w
-    dist = torch.norm(tcp_pos - obj_pos, dim=-1)
+    
+    # [수정] 왼팔은 큐브의 모서리를 잡아야 하므로 오프셋 적용
+    grab_pos = obj_pos.clone()
+    grab_pos[:, 0] += x_offset
+    dist = torch.norm(tcp_pos - grab_pos, dim=-1)
     
     # 그리퍼 폭 계산
     gripper_idx, _ = robot.find_joints(gripper_joint_regex)
@@ -491,9 +495,9 @@ def premature_gripper_close_penalty(env: ManagerBasedRLEnv, asset_name: str, pic
     gripper_width = torch.sum(gripper_pos, dim=-1)
     
     # TCP가 큐브 윗면보다 높이 떠 있으면(Z축 기준) 큐브가 손가락 사이에 없다고 판단
-    is_above_top = tcp_pos[:, 2] > obj_pos[:, 2] + 0.01
+    is_above_top = tcp_pos[:, 2] > grab_pos[:, 2] + 0.01
     
-    # 큐브 중심에서 6cm보다 멀거나, 큐브 위를 누르고만 있으면 미포획 상태로 간주
+    # 큐브 중심(또는 오프셋 위치)에서 6cm보다 멀거나, 큐브 위를 누르고만 있으면 미포획 상태로 간주
     not_engulfing = torch.logical_or(dist > 0.06, is_above_top)
     
     # 그리퍼가 4cm(0.04m)보다 작게 열려 있으면 주먹을 쥐었다고 판단
