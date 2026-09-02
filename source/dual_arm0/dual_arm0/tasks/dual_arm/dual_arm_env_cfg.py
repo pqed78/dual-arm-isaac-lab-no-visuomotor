@@ -38,7 +38,7 @@ class DualArmSceneCfg(InteractiveSceneCfg):
     # DUAL_FRANKA_CFG에서 기본 설정을 가져오며, 환경 네임스페이스를 반영하여 경로를 설정합니다.
     robot = DUAL_FRANKA_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
 
-    # object to manipulate (cylinder) (조작할 대상 물체인 원기둥 설정)
+    # object to manipulate (직육면체) (조작할 대상 물체)
     object = RigidObjectCfg(
         prim_path="{ENV_REGEX_NS}/Object",  # 물체가 생성될 경로
         # 누워있는 상태: Y축 기준 90도 회전 (w=0.7071, y=0.7071), 중심 높이는 두께(0.04)의 절반인 0.02
@@ -50,7 +50,7 @@ class DualArmSceneCfg(InteractiveSceneCfg):
                 0.04,
                 0.04,
                 0.25,
-            ),  # 가로 4cm, 세로 4cm, 높이 10cm의 직육면체 (원기둥 대신 굴러가지 않게 함)
+            ),  # 가로 4cm, 세로 4cm, 높이 25cm의 직육면체 (원기둥 대신 굴러가지 않게 함)
             rigid_props=sim_utils.RigidBodyPropertiesCfg(),  # 강체 물리 속성 활성화
             mass_props=sim_utils.MassPropertiesCfg(
                 mass=0.2
