@@ -44,7 +44,7 @@ class DualArmSceneCfg(InteractiveSceneCfg):
         # 누워있는 상태: Y축 기준 90도 회전 (w=0.7071, y=0.7071), 중심 높이는 두께(0.04)의 절반인 0.02
         init_state=RigidObjectCfg.InitialStateCfg(pos=(0.5, 0.0, 0.02), rot=(0.7071, 0.0, 0.7071, 0.0)), 
         spawn=sim_utils.CuboidCfg(
-            size=(0.04, 0.04, 0.15), # 가로 4cm, 세로 4cm, 높이 10cm의 직육면체 (원기둥 대신 굴러가지 않게 함)
+            size=(0.04, 0.04, 0.25), # 가로 4cm, 세로 4cm, 높이 10cm의 직육면체 (원기둥 대신 굴러가지 않게 함)
             rigid_props=sim_utils.RigidBodyPropertiesCfg(), # 강체 물리 속성 활성화
             mass_props=sim_utils.MassPropertiesCfg(mass=0.2), # [수정] 1.0kg은 너무 무거워서 들고 이동할 때 놓침. 0.2kg으로 경량화.
             collision_props=sim_utils.CollisionPropertiesCfg(), # 충돌 속성 활성화
@@ -133,8 +133,8 @@ class ObservationsCfg:
         place_tcp_quat = ObsTerm(func=custom_obs.place_tcp_quat_w, params={"asset_name": "robot", "place_hand_regex": "panda_hand$"})
         
         # relative distances
-        pick_to_obj = ObsTerm(func=custom_obs.object_to_pick_tcp_relative, params={"asset_name": "robot", "pick_hand_regex": "panda_hand_0", "object_name": "object", "x_offset": 0.04})
-        place_to_obj = ObsTerm(func=custom_obs.object_to_place_tcp_relative, params={"asset_name": "robot", "place_hand_regex": "panda_hand$", "object_name": "object", "x_offset": -0.06})
+        pick_to_obj = ObsTerm(func=custom_obs.object_to_pick_tcp_relative, params={"asset_name": "robot", "pick_hand_regex": "panda_hand_0", "object_name": "object", "x_offset": 0.07})
+        place_to_obj = ObsTerm(func=custom_obs.object_to_place_tcp_relative, params={"asset_name": "robot", "place_hand_regex": "panda_hand$", "object_name": "object", "x_offset": -0.08})
         obj_to_target = ObsTerm(func=custom_obs.object_to_target_relative, params={"object_name": "object", "target_name": "target"})
         
         def __post_init__(self):
@@ -200,7 +200,7 @@ class RewardsCfg:
     pick_reach = RewTerm(
         func=rewards.pick_reach_object, 
         weight=20.0,  # [수정] 호버 꼼수를 삭제했으므로 다시 20.0으로 복구하여 추진력을 줍니다.
-        params={"asset_name": "robot", "pick_hand_regex": "panda_hand_0", "object_name": "object", "x_offset": 0.04}
+        params={"asset_name": "robot", "pick_hand_regex": "panda_hand_0", "object_name": "object", "x_offset": 0.07}
     )
     
     # 1-2. 물체 근처에 도달했을 때 그리퍼를 꽉 쥐도록 유도하는 보상
@@ -212,7 +212,7 @@ class RewardsCfg:
             "pick_hand_regex": "panda_hand_0",
             "object_name": "object",
             "gripper_joint_regex": "panda_finger_joint[1-2]_0",
-            "x_offset": 0.04
+            "x_offset": 0.07
         }
     )
     
@@ -235,7 +235,7 @@ class RewardsCfg:
             "asset_name": "robot",
             "pick_hand_regex": "panda_hand_0",
             "object_name": "object",
-            "x_offset": 0.04
+            "x_offset": 0.07
         }
     )
     
@@ -259,7 +259,7 @@ class RewardsCfg:
             "pick_hand_regex": "panda_hand_0",
             "object_name": "object",
             "gripper_joint_regex": "panda_finger_joint[1-2]_0",
-            "x_offset": 0.04
+            "x_offset": 0.07
         }
     )
     
@@ -272,14 +272,14 @@ class RewardsCfg:
             "pick_hand_regex": "panda_hand$",
             "object_name": "object",
             "gripper_joint_regex": "panda_finger_joint[1-2]$",
-            "x_offset": -0.06,
+            "x_offset": -0.08,
         },
     )
     
     # 2. 오른쪽 팔이 물체를 바닥에서 들어 올리면 추가 보상 부여
     pick_lift = RewTerm(
         func=rewards.object_lifted_by_pick_arm,
-        params={"asset_name": "robot", "pick_hand_regex": "panda_hand_0", "object_name": "object", "x_offset": 0.04},
+        params={"asset_name": "robot", "pick_hand_regex": "panda_hand_0", "object_name": "object", "x_offset": 0.07},
         weight=100.0, # [수정] 50.0 -> 100.0 (목표 달성 보상을 다가가는 보상보다 무조건 크게 설정)
     )
     
