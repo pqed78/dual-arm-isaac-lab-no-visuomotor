@@ -289,7 +289,8 @@ def place_gripper_close(env: ManagerBasedRLEnv, asset_name: str, place_hand_rege
     
     # [수정] 왼팔이 큐브 끝부분 반경 4cm 이내에 들어오면 1.0 (감점 없음), 이후 20cm에 걸쳐 서서히 깎임
     # [수정] 12cm 이내부터 쥐기 보상을 줌 (패널티와 기준 통일)
-    is_engulfing = 1.0 - torch.clamp((dist_to_grab - 0.04) / 0.08, min=0.0, max=1.0)
+    # [수정] 큐브가 손가락 사이에 들어왔을 때(5cm 이내)만 쥐기 보상을 주도록 초정밀 제한
+    is_engulfing = 1.0 - torch.clamp((dist_to_grab - 0.02) / 0.03, min=0.0, max=1.0)
     
     # [수정] 완전히 열린 상태(0.08)부터 시작해서, 큐브 두께(0.04)만큼 닫으면 만점(1.0) 부여
     is_closed = 1.0 - torch.clamp((gripper_width - 0.04) / 0.04, min=0.0, max=1.0)
@@ -313,7 +314,7 @@ def pick_release(env: ManagerBasedRLEnv, asset_name: str, pick_hand_regex: str, 
     grab_pos = obj_pos.clone()
     grab_pos[:, 0] -= 0.08
     dist_to_grab = torch.norm(tcp_pos_l - grab_pos, dim=-1)
-    place_is_held = 1.0 - torch.clamp((dist_to_grab - 0.04) / 0.20, min=0.0, max=1.0)
+    place_is_held = 1.0 - torch.clamp((dist_to_grab - 0.02) / 0.03, min=0.0, max=1.0)
     
     gripper_idx_l = robot.find_joints("panda_finger_joint[1-2]$")[0]
     place_gripper_width = torch.sum(robot.data.joint_pos[:, gripper_idx_l], dim=-1)
