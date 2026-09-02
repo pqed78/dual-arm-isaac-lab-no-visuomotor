@@ -34,7 +34,7 @@ def reset_object_with_curriculum(env: ManagerBasedRLEnv, env_ids: torch.Tensor, 
 
     # 기본(쉬운) 위치 설정 (고정)
     base_x = 0.4
-    base_y = -0.3
+    base_y = -0.5
     base_roll = 0.0
 
     # 랜덤 노이즈 생성 (난이도가 0일 때는 노이즈도 0)
