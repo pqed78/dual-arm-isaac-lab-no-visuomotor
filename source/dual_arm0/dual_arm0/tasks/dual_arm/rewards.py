@@ -504,6 +504,10 @@ def place_grasp_pose_reward(env: ManagerBasedRLEnv, asset_name: str, place_hand_
     cube_x_y = 2.0 * (ox * oy + ow * oz)
     cube_x_z = 2.0 * (ox * oz - ow * oy)
     
+    cube_y_x = 2.0 * (ox * oy - ow * oz)
+    cube_y_y = 1.0 - 2.0 * (ox * ox + oz * oz)
+    cube_y_z = 2.0 * (oy * oz + ow * ox)
+    
     cube_z_x = 2.0 * (ox * oz + ow * oy)
     cube_z_y = 2.0 * (oy * oz - ow * ox)
     cube_z_z = 1.0 - 2.0 * (ox * ox + oy * oy)
