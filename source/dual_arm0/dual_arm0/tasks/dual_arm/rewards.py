@@ -451,8 +451,9 @@ def handover_pose_right(env: ManagerBasedRLEnv, asset_name: str, pick_hand_regex
     z_dir_y = 2.0 * (y * z - w * x)
     robot_y_z = 2.0 * (y * z + w * x)
     
-    # TCP Z-axis 가 월드 +Y 방향을 향해야 함
-    handover_approach_alignment = torch.clamp(z_dir_y, min=0.0, max=1.0)
+    # TCP Z-axis 가 월드 +Y 방향을 향해야 함 (z_dir_y -> +1.0)
+    # [수정] clamp(min=0.0)을 쓰면 음수 영역에서 기울기(Gradient)가 0이 되어 학습이 안 됩니다.
+    handover_approach_alignment = (z_dir_y + 1.0) / 2.0
     # TCP Y-axis (손가락) 가 월드 수직(Z축)을 향해야 함 (위아래로 잡기)
     handover_finger_alignment = torch.abs(robot_y_z)
     
@@ -523,8 +524,8 @@ def place_grasp_pose_reward(env: ManagerBasedRLEnv, asset_name: str, place_hand_
     tcp_y_z = 2.0 * (y * z + w * x)
     
     # 1. 접근 방향 (TCP Z-axis)이 월드 -Y 방향을 향해야 함 (오른팔과 마주보기 위함)
-    # tcp_z_y 가 -1.0 에 가까울수록 1.0
-    approach_alignment = torch.clamp(-tcp_z_y, min=0.0, max=1.0)
+    # [수정] clamp(min=0.0)을 쓰면 음수 영역에서 기울기(Gradient)가 0이 되어 학습이 안 됩니다.
+    approach_alignment = (-tcp_z_y + 1.0) / 2.0
     
     # 2. 손가락 닫히는 방향 (TCP Y-axis)이 월드 수직(Z축) 방향과 정렬되어야 함 (위아래로 잡기)
     # tcp_y_z 의 절대값이 1.0 에 가까울수록 1.0
