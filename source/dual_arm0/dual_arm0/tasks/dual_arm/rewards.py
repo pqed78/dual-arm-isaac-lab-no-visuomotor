@@ -508,7 +508,16 @@ def handover_pose_right(env: ManagerBasedRLEnv, asset_name: str, pick_hand_regex
     # TCP Y-axis (손가락) 가 월드 수직(Z축)을 향해야 함 (위아래로 잡기)
     handover_finger_alignment = torch.abs(robot_y_z)
     
-    handover_pose_reward = handover_approach_alignment * handover_finger_alignment
+    # [추가] 바통 터치 자세: 왼팔이 잡아야 할 큐브의 '아래쪽(-X)'이 왼팔이 있는 '+Y' 방향을 향하도록 유도
+    # 즉, 큐브의 로컬 +X 축이 월드 -Y 방향을 향하면 완벽한 바통 터치 자세가 됩니다.
+    obj_quat = obj.data.root_quat_w
+    ow, ox, oy, oz = obj_quat[:, 0], obj_quat[:, 1], obj_quat[:, 2], obj_quat[:, 3]
+    cube_x_y = 2.0 * (ox * oy + ow * oz) # 큐브의 로컬 X축 벡터의 Y성분
+    
+    # cube_x_y 가 -1.0 이 되면 큐브의 -X축이 +Y 방향을 향하게 됨
+    handover_cube_alignment = (1.0 - cube_x_y) / 2.0
+    
+    handover_pose_reward = handover_approach_alignment * handover_finger_alignment * handover_cube_alignment
     
     # 물체가 들려있을 때만 이 자세를 취하도록 함
     obj_pos = obj.data.root_pos_w
