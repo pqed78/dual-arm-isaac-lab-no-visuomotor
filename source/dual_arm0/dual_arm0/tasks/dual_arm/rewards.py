@@ -146,16 +146,14 @@ def place_reach_object(env: ManagerBasedRLEnv, asset_name: str, place_hand_regex
     
     dist_to_handover = torch.norm(obj_pos - target_pos, dim=-1)
     
-    # [수정] 충돌 방지(Collision Avoidance) 로직 추가
-    # 대기 위치: 중앙 위치에서 살짝 왼쪽(Y=+0.1) 위(Z=+0.1)로 비켜서 대기하여 오른팔의 진로를 방해하지 않음
+    # 대기 위치: 중앙 위치에서 왼팔 쪽(Y=+0.1) 위(Z=+0.1)로 비켜서 대기하여 오른팔의 진로를 방해하지 않음
     wait_pos = target_pos.clone()
     wait_pos[:, 1] += 0.1
     wait_pos[:, 2] += 0.1
     
-    # 잡기 위치: 큐브의 정중앙은 오른팔이 쥐고 있으므로, 왼팔은 큐브의 한쪽 끝부분(X=-0.04)을 겨냥하여 손가락 겹침 방지
-    # (큐브는 X축 방향으로 10cm 길쭉하게 누워있음)
+    # 잡기 위치: 큐브의 정중앙. 
+    # (오른팔은 -Y에서 오고 왼팔은 +Y에서 오며, 수직으로 잡으므로 서로 부딪히지 않습니다.)
     grab_pos = obj_pos.clone()
-    grab_pos[:, 0] -= 0.04
     
     # [수정] 30cm 경계선에서 타겟이 순간이동하면 보상이 급락(Reward Cliff)하여 로봇이 경계선을 넘지 못하고 덜덜 떠는 문제(Shaking) 발생!
     # 따라서 큐브가 40cm에서 10cm 사이로 접근할 때 대기 위치에서 잡기 위치로 자석처럼 부드럽게 이끌리도록 연속적인 보간(Interpolation)을 사용합니다.
