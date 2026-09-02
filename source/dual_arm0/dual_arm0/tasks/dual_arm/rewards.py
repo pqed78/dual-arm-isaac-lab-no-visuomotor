@@ -161,9 +161,9 @@ def place_reach_object(env: ManagerBasedRLEnv, asset_name: str, place_hand_regex
     grab_pos = obj_pos.clone()
     grab_pos[:, 0] -= 0.04
     
-    # [수정] 30cm 경계선에서 타겟이 순간이동하면 보상이 급락(Reward Cliff)하여 로봇이 경계선을 넘지 못하고 덜덜 떠는 문제(Shaking) 발생!
-    # 따라서 큐브가 40cm에서 10cm 사이로 접근할 때 대기 위치에서 잡기 위치로 자석처럼 부드럽게 이끌리도록 연속적인 보간(Interpolation)을 사용합니다.
-    alpha = torch.clamp((0.40 - dist_to_handover) / 0.30, min=0.0, max=1.0).unsqueeze(-1)
+    # [수정] 오른팔이 물리적 한계로 15cm 부근에서 멈춰버리므로, 20cm 이내로 들어오면 왼팔이 완전히(100%) 다가가서 잡도록 수정합니다.
+    # 원래 분모가 0.30이면 10cm 이내로 들어와야 alpha=1.0이 되었지만, 0.20으로 바꾸면 20cm 이내에서 alpha=1.0이 됩니다.
+    alpha = torch.clamp((0.40 - dist_to_handover) / 0.20, min=0.0, max=1.0).unsqueeze(-1)
     
     dynamic_target_pos = (1.0 - alpha) * wait_pos + alpha * grab_pos
     
