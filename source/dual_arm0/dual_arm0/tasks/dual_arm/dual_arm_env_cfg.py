@@ -183,7 +183,7 @@ class EventCfg:
 
 # [수정] Z=0.4는 위에서 아래로 잡는 오른팔에게 물리적 리치 한계(Singularity)를 유발할 정도로 너무 높았습니다. 0.2로 낮춥니다.
 # [수정] 오른팔 관절 꼬임 방지를 위해 오른팔 쪽으로 15cm 당겨줍니다. (편법 적용)
-HANDOVER_POS = [0.4, 0.0, 0.3]
+HANDOVER_POS = [0.15, 0.0, 0.3]
 
 @configclass
 class RewardsCfg:
