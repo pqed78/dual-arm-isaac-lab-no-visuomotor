@@ -424,12 +424,18 @@ def pick_grasp_pose_reward(env: ManagerBasedRLEnv, asset_name: str, pick_hand_re
     dist = torch.norm(tcp_pos - obj_pos, dim=-1)
     is_near_arm = 1.0 - torch.clamp((dist - 0.04) / 0.20, min=0.0, max=1.0)
     
-    pose_reward = vertical_alignment * finger_alignment
+    # 5. Handover 자세 (오른팔이 왼팔을 향해 Y축 평행하게 마주보기)
+    # TCP Z-axis 가 월드 +Y 방향을 향해야 함
+    handover_approach_alignment = torch.clamp(z_dir_y, min=0.0, max=1.0)
+    # TCP Y-axis (손가락) 가 월드 수직(Z축)을 향해야 함 (위아래로 잡기)
+    handover_finger_alignment = torch.abs(robot_y_z)
+    handover_pose_reward = handover_approach_alignment * handover_finger_alignment
     
-    # [수정] 유저 피드백: "왼손으로 옮겨줄 때는 편한 자세로 전달해도 되는데"
-    # 물체가 지면에서 어느 정도 들리면, 로봇이 팔을 뻗기 편한 자유로운 자세를 취할 수 있도록 자세 강제를 해제(만점 유지)합니다.
+    # [수정] 유저 피드백: "handover시 y축에 평행한 방향으로 오른손 왼손이 마주보면서 전달"
+    # 물체가 지면에서 어느 정도 들리면, 바닥에서 집어올리는 수직 자세(pose_reward)에서
+    # 왼팔을 마주보는 수평 전달 자세(handover_pose_reward)로 자연스럽게 전환되도록 유도합니다.
     is_lifted = torch.clamp((obj_pos[:, 2] - 0.05) / 0.05, min=0.0, max=1.0) # 5cm 이상 들리면 1.0
-    relaxed_pose_reward = torch.lerp(pose_reward, torch.ones_like(pose_reward), is_lifted)
+    relaxed_pose_reward = torch.lerp(pose_reward, handover_pose_reward, is_lifted)
     
     return relaxed_pose_reward * is_near_arm
 
@@ -488,39 +494,16 @@ def place_grasp_pose_reward(env: ManagerBasedRLEnv, asset_name: str, place_hand_
     w, x, y, z = wrist_quat[:, 0], wrist_quat[:, 1], wrist_quat[:, 2], wrist_quat[:, 3]
     
     # Left Arm TCP axes
-    tcp_z_x = 2.0 * (x * z + w * y)
     tcp_z_y = 2.0 * (y * z - w * x)
-    tcp_z_z = 1.0 - 2.0 * (x * x + y * y)
-    
-    tcp_y_x = 2.0 * (x * y - w * z)
-    tcp_y_y = 1.0 - 2.0 * (x * x + z * z)
     tcp_y_z = 2.0 * (y * z + w * x)
     
-    # Cuboid axes
-    obj_quat = obj.data.root_quat_w
-    ow, ox, oy, oz = obj_quat[:, 0], obj_quat[:, 1], obj_quat[:, 2], obj_quat[:, 3]
+    # 1. 접근 방향 (TCP Z-axis)이 월드 -Y 방향을 향해야 함 (오른팔과 마주보기 위함)
+    # tcp_z_y 가 -1.0 에 가까울수록 1.0
+    approach_alignment = torch.clamp(-tcp_z_y, min=0.0, max=1.0)
     
-    cube_x_x = 1.0 - 2.0 * (oy * oy + oz * oz)
-    cube_x_y = 2.0 * (ox * oy + ow * oz)
-    cube_x_z = 2.0 * (ox * oz - ow * oy)
+    # 2. 손가락 닫히는 방향 (TCP Y-axis)이 월드 수직(Z축) 방향과 정렬되어야 함 (위아래로 잡기)
+    # tcp_y_z 의 절대값이 1.0 에 가까울수록 1.0
+    finger_alignment = torch.abs(tcp_y_z)
     
-    cube_y_x = 2.0 * (ox * oy - ow * oz)
-    cube_y_y = 1.0 - 2.0 * (ox * ox + oz * oz)
-    cube_y_z = 2.0 * (oy * oz + ow * ox)
-    
-    cube_z_x = 2.0 * (ox * oz + ow * oy)
-    cube_z_y = 2.0 * (oy * oz - ow * ox)
-    cube_z_z = 1.0 - 2.0 * (ox * ox + oy * oy)
-    
-    # 1. 접근 방향 (TCP Z-axis)이 큐브의 긴 축 (Cuboid Z-axis)과 정렬되어야 함 (마주보든 같은방향이든 무관하므로 절대값)
-    z_dot = tcp_z_x * cube_z_x + tcp_z_y * cube_z_y + tcp_z_z * cube_z_z
-    approach_alignment = torch.abs(z_dot)
-    
-    # 2. 손가락 닫히는 방향 (TCP Y-axis)이 큐브의 Y축과 정렬되어야 함.
-    # 오른팔이 큐브의 윗면(X축)을 덮고 있으므로, 왼팔이 상하(X축)로 잡으려 하면 오른팔의 손바닥과 충돌합니다.
-    # 따라서 큐브의 긴 축(Z축) 끝에서 다가가서, 오른팔과 동일하게 측면(Y축)을 잡아야 합니다.
-    y_dot = tcp_y_x * cube_y_x + tcp_y_y * cube_y_y + tcp_y_z * cube_y_z
-    finger_alignment = torch.abs(y_dot)
-    
-    # [수정] 큐브가 회전하더라도 큐브의 면에 정확히 맞춰서 잡도록 유도
+    # [수정] 유저 피드백: "handover시 y축에 평행한 방향으로 오른손 왼손이 마주보면서 전달"
     return approach_alignment * finger_alignment
