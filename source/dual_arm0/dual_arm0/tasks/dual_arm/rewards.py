@@ -424,7 +424,14 @@ def pick_grasp_pose_reward(env: ManagerBasedRLEnv, asset_name: str, pick_hand_re
     dist = torch.norm(tcp_pos - obj_pos, dim=-1)
     is_near_arm = 1.0 - torch.clamp((dist - 0.04) / 0.20, min=0.0, max=1.0)
     
-    return vertical_alignment * finger_alignment * is_near_arm
+    pose_reward = vertical_alignment * finger_alignment
+    
+    # [수정] 유저 피드백: "왼손으로 옮겨줄 때는 편한 자세로 전달해도 되는데"
+    # 물체가 지면에서 어느 정도 들리면, 로봇이 팔을 뻗기 편한 자유로운 자세를 취할 수 있도록 자세 강제를 해제(만점 유지)합니다.
+    is_lifted = torch.clamp((obj_pos[:, 2] - 0.05) / 0.05, min=0.0, max=1.0) # 5cm 이상 들리면 1.0
+    relaxed_pose_reward = torch.lerp(pose_reward, torch.ones_like(pose_reward), is_lifted)
+    
+    return relaxed_pose_reward * is_near_arm
 
 def premature_gripper_close_penalty(env: ManagerBasedRLEnv, asset_name: str, pick_hand_regex: str, object_name: str, gripper_joint_regex: str) -> torch.Tensor:
     """큐브가 손가락 사이에 없는데도 미리 주먹을 쥐고 다가가서 큐브를 치고 다니는 행위를 방지하는 페널티입니다."""
@@ -480,13 +487,34 @@ def place_grasp_pose_reward(env: ManagerBasedRLEnv, asset_name: str, place_hand_
     
     w, x, y, z = wrist_quat[:, 0], wrist_quat[:, 1], wrist_quat[:, 2], wrist_quat[:, 3]
     
-    # 1. 접근 방향 (TCP Z-axis)이 수평이어야 함 (World Z 성분이 0에 가까워야 함)
-    z_dir_z = 1.0 - 2.0 * (x * x + y * y)
-    horizontal_approach = 1.0 - torch.abs(z_dir_z)
+    # Left Arm TCP axes
+    tcp_z_x = 2.0 * (x * z + w * y)
+    tcp_z_y = 2.0 * (y * z - w * x)
+    tcp_z_z = 1.0 - 2.0 * (x * x + y * y)
     
-    # 2. 손가락 닫히는 방향 (TCP Y-axis)이 수평이어야 함 (World Z 성분이 0에 가까워야 함)
-    y_dir_z = 2.0 * (y * z + w * x)
-    horizontal_fingers = 1.0 - torch.abs(y_dir_z)
+    tcp_y_x = 2.0 * (x * y - w * z)
+    tcp_y_y = 1.0 - 2.0 * (x * x + z * z)
+    tcp_y_z = 2.0 * (y * z + w * x)
     
-    # [수정] 조건 제거: 큐브가 오지 않았더라도 항상 예쁜 자세로 마중 나가도록 상시 활성화
-    return horizontal_approach * horizontal_fingers
+    # Cuboid axes
+    obj_quat = obj.data.root_quat_w
+    ow, ox, oy, oz = obj_quat[:, 0], obj_quat[:, 1], obj_quat[:, 2], obj_quat[:, 3]
+    
+    cube_x_x = 1.0 - 2.0 * (oy * oy + oz * oz)
+    cube_x_y = 2.0 * (ox * oy + ow * oz)
+    cube_x_z = 2.0 * (ox * oz - ow * oy)
+    
+    cube_z_x = 2.0 * (ox * oz + ow * oy)
+    cube_z_y = 2.0 * (oy * oz - ow * ox)
+    cube_z_z = 1.0 - 2.0 * (ox * ox + oy * oy)
+    
+    # 1. 접근 방향 (TCP Z-axis)이 큐브의 긴 축 (Cuboid Z-axis)과 정렬되어야 함 (마주보든 같은방향이든 무관하므로 절대값)
+    z_dot = tcp_z_x * cube_z_x + tcp_z_y * cube_z_y + tcp_z_z * cube_z_z
+    approach_alignment = torch.abs(z_dot)
+    
+    # 2. 손가락 닫히는 방향 (TCP Y-axis)이 큐브의 X축 (오른팔이 잡지 않은 빈 면)과 정렬되어야 함
+    y_dot = tcp_y_x * cube_x_x + tcp_y_y * cube_x_y + tcp_y_z * cube_x_z
+    finger_alignment = torch.abs(y_dot)
+    
+    # [수정] 큐브가 회전하더라도 큐브의 면에 정확히 맞춰서 잡도록 유도
+    return approach_alignment * finger_alignment
