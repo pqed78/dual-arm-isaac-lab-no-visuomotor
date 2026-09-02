@@ -42,7 +42,7 @@ class DualArmSceneCfg(InteractiveSceneCfg):
     object = RigidObjectCfg(
         prim_path="{ENV_REGEX_NS}/Object", # 물체가 생성될 경로
         # 누워있는 상태: Y축 기준 90도 회전 (w=0.7071, y=0.7071), 중심 높이는 두께(0.04)의 절반인 0.02
-        init_state=RigidObjectCfg.InitialStateCfg(pos=(0.5, 0.0, 0.02), rot=(0.7071, 0.0, 0.7071, 0.0)), 
+        init_state=RigidObjectCfg.InitialStateCfg(pos=(0.5, 0.0, 0.02), rot=(0.7071, 0.7071, 0.0, 0.0)), 
         spawn=sim_utils.CuboidCfg(
             size=(0.04, 0.04, 0.25), # 가로 4cm, 세로 4cm, 높이 10cm의 직육면체 (원기둥 대신 굴러가지 않게 함)
             rigid_props=sim_utils.RigidBodyPropertiesCfg(), # 강체 물리 속성 활성화
@@ -183,7 +183,7 @@ class EventCfg:
 
 # [수정] Z=0.4는 위에서 아래로 잡는 오른팔에게 물리적 리치 한계(Singularity)를 유발할 정도로 너무 높았습니다. 0.2로 낮춥니다.
 # [수정] 오른팔 관절 꼬임 방지를 위해 오른팔 쪽으로 15cm 당겨줍니다. (편법 적용)
-HANDOVER_POS = [0.15, 0.0, 0.3]
+HANDOVER_POS = [0.4, 0.0, 0.3]
 
 @configclass
 class RewardsCfg:
