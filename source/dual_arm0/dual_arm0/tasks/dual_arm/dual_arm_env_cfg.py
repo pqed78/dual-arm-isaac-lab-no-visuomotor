@@ -379,18 +379,6 @@ class RewardsCfg:
         weight=100.0,
     )
 
-    # 4-1. 왼쪽 팔이 핸드오버 구역에서 다가갈 때 올바른 자세(옆에서 접근)를 취하도록 유도
-    place_grasp_pose = RewTerm(
-        func=rewards.place_grasp_pose_reward,
-        weight=50.0,
-        params={
-            "asset_name": "robot",
-            "place_hand_regex": "panda_hand$",
-            "object_name": "object",
-            "handover_pos": HANDOVER_POS
-        },
-    )
-    
     # 4-2. 왼쪽 팔이 큐브를 넘겨받기 위해 꽉 쥐었을 때 보상 부여 (Place Gripper Close)
     place_gripper_close = RewTerm(
         func=rewards.place_gripper_close,
