@@ -497,14 +497,14 @@ def handover_pose_right(env: ManagerBasedRLEnv, asset_name: str, pick_hand_regex
     wrist_idx = robot.find_bodies(pick_hand_regex)[0]
     wrist_quat = robot.data.body_quat_w[:, wrist_idx[0]]
     
-    # 5. Handover 자세 (오른팔이 왼팔을 향해 Y축 평행하게 마주보기)
+    # 5. Handover 자세 (오른팔이 큐브를 수평으로 유지하며 손가락을 세우기)
     w, x, y, z = wrist_quat[:, 0], wrist_quat[:, 1], wrist_quat[:, 2], wrist_quat[:, 3]
-    z_dir_y = 2.0 * (y * z - w * x)
+    z_dir_z = 1.0 - 2.0 * (x * x + y * y)
     robot_y_z = 2.0 * (y * z + w * x)
     
-    # TCP Z-axis 가 월드 +Y 방향을 향해야 함 (z_dir_y -> +1.0)
-    # [수정] clamp(min=0.0)을 쓰면 음수 영역에서 기울기(Gradient)가 0이 되어 학습이 안 됩니다.
-    handover_approach_alignment = (z_dir_y + 1.0) / 2.0
+    # [수정] 강제로 +Y 방향을 보게 하면 팔목이 꺾여서 점수를 얻기 힘듭니다.
+    # 그저 손끝 방향(TCP Z-axis)이 수평(z_dir_z = 0.0)이 되도록만 완화합니다.
+    handover_approach_alignment = 1.0 - torch.abs(z_dir_z)
     # TCP Y-axis (손가락) 가 월드 수직(Z축)을 향해야 함 (위아래로 잡기)
     handover_finger_alignment = torch.abs(robot_y_z)
     
