@@ -253,7 +253,7 @@ class RewardsCfg:
     # 1-5. 큐브가 손 안에 없는데 미리 주먹을 쥐는 행위 방지 (Fist-bumping 페널티)
     premature_gripper_close = RewTerm(
         func=rewards.premature_gripper_close_penalty,
-        weight=-10.0,  # [수정] -0.5 -> -10.0 (허공에서 주먹 쥐고 다니지 못하도록 강력하게 패널티)
+        weight=-50.0,  # [수정] -100.0 -> -50.0 (공포증 완화)
         params={
             "asset_name": "robot",
             "pick_hand_regex": "panda_hand_0",
@@ -266,7 +266,7 @@ class RewardsCfg:
     # 2-5. 큐브가 아직 오지 않았는데 미리 주먹 쥐기 방지
     place_premature_gripper_close = RewTerm(
         func=rewards.premature_gripper_close_penalty,
-        weight=-10.0, # [수정] -0.5 -> -10.0 (주먹을 쥐고 다니면 큐브를 칠 수 있으므로 강력하게 패널티)
+        weight=-50.0, # [수정] -100.0 -> -50.0 (공포증 완화)
         params={
             "asset_name": "robot",
             "pick_hand_regex": "panda_hand$",

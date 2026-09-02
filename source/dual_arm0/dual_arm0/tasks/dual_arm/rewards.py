@@ -288,7 +288,8 @@ def place_gripper_close(env: ManagerBasedRLEnv, asset_name: str, place_hand_rege
     gripper_width = torch.sum(robot.data.joint_pos[:, gripper_idx], dim=-1)
     
     # [수정] 왼팔이 큐브 끝부분 반경 4cm 이내에 들어오면 1.0 (감점 없음), 이후 20cm에 걸쳐 서서히 깎임
-    is_engulfing = 1.0 - torch.clamp((dist_to_grab - 0.04) / 0.20, min=0.0, max=1.0)
+    # [수정] 12cm 이내부터 쥐기 보상을 줌 (패널티와 기준 통일)
+    is_engulfing = 1.0 - torch.clamp((dist_to_grab - 0.04) / 0.08, min=0.0, max=1.0)
     
     # [수정] 완전히 열린 상태(0.08)부터 시작해서, 큐브 두께(0.04)만큼 닫으면 만점(1.0) 부여
     is_closed = 1.0 - torch.clamp((gripper_width - 0.04) / 0.04, min=0.0, max=1.0)
@@ -557,7 +558,7 @@ def premature_gripper_close_penalty(env: ManagerBasedRLEnv, asset_name: str, pic
     is_above_top = tcp_pos[:, 2] > grab_pos[:, 2] + 0.01
     
     # 큐브 중심(또는 오프셋 위치)에서 6cm보다 멀거나, 큐브 위를 누르고만 있으면 미포획 상태로 간주
-    not_engulfing = torch.logical_or(dist > 0.06, is_above_top)
+    not_engulfing = torch.logical_or(dist > 0.12, is_above_top)
     
     # 그리퍼가 4cm(0.04m)보다 작게 열려 있으면 주먹을 쥐었다고 판단
     is_closed = gripper_width < 0.04
