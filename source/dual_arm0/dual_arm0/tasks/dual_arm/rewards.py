@@ -101,7 +101,7 @@ def object_lifted_by_pick_arm(env: ManagerBasedRLEnv, asset_name: str, pick_hand
     sign_y = torch.sign(obj_z_dir[:, 1])
     sign_y = torch.where(sign_y == 0, torch.ones_like(sign_y), sign_y).unsqueeze(-1)
     grab_pos_l = obj_pos.clone()
-    grab_pos_l += sign_y * 0.08 * obj_z_dir
+    grab_pos_l += sign_y * 0.10 * obj_z_dir
     dist_l = torch.norm(tcp_pos_l - grab_pos_l, dim=-1)
     is_near_left = 1.0 - torch.clamp((dist_l - 0.04) / 0.20, min=0.0, max=1.0)
     
@@ -152,7 +152,7 @@ def handover_zone_approach(env: ManagerBasedRLEnv, asset_name: str, pick_hand_re
     z_dir_l = torch.stack([2.0 * (x_l * z_l + w_l * y_l), 2.0 * (y_l * z_l - w_l * x_l), 1.0 - 2.0 * (x_l * x_l + y_l * y_l)], dim=-1)
     tcp_pos_l = wrist_pos_l + 0.1034 * z_dir_l
     
-    # [수정] 왼팔은 충돌 방지를 위해 큐브 끝부분(X=-0.08)을 잡고 있으므로, 잡고 있는지 판정할 때 오프셋 적용
+    # [수정] 왼팔은 충돌 방지를 위해 큐브 끝부분(X=0.10)을 잡고 있으므로, 잡고 있는지 판정할 때 오프셋 적용
     
     obj_quat = obj.data.root_quat_w
     qw, qx, qy, qz = obj_quat[:, 0], obj_quat[:, 1], obj_quat[:, 2], obj_quat[:, 3]
@@ -160,7 +160,7 @@ def handover_zone_approach(env: ManagerBasedRLEnv, asset_name: str, pick_hand_re
     sign_y = torch.sign(obj_z_dir[:, 1])
     sign_y = torch.where(sign_y == 0, torch.ones_like(sign_y), sign_y).unsqueeze(-1)
     grab_pos_l = obj_pos.clone()
-    grab_pos_l += sign_y * 0.08 * obj_z_dir
+    grab_pos_l += sign_y * 0.10 * obj_z_dir
     dist_to_grab_l = torch.norm(tcp_pos_l - grab_pos_l, dim=-1)
     is_held_by_left = 1.0 - torch.clamp((dist_to_grab_l - 0.04) / 0.20, min=0.0, max=1.0)
     
@@ -201,7 +201,7 @@ def place_reach_object(env: ManagerBasedRLEnv, asset_name: str, place_hand_regex
     wait_pos[:, 2] += 0.25  # [수정] 상공 25cm 위로 훌쩍 띄움
     
     # 잡기 위치: 큐브의 정중앙(X=0.0)은 오른팔이 쥐고 있으므로, 
-    # 마주보더라도 손가락이 겹치지 않게 왼팔은 큐브의 한쪽 끝부분(X=-0.08)을 겨냥합니다.
+    # 마주보더라도 손가락이 겹치지 않게 왼팔은 큐브의 한쪽 끝부분(X=0.10)을 겨냥합니다.
     
     obj_quat = obj.data.root_quat_w
     qw, qx, qy, qz = obj_quat[:, 0], obj_quat[:, 1], obj_quat[:, 2], obj_quat[:, 3]
@@ -209,7 +209,7 @@ def place_reach_object(env: ManagerBasedRLEnv, asset_name: str, place_hand_regex
     sign_y = torch.sign(obj_z_dir[:, 1])
     sign_y = torch.where(sign_y == 0, torch.ones_like(sign_y), sign_y).unsqueeze(-1)
     grab_pos = obj_pos.clone()
-    grab_pos += sign_y * 0.08 * obj_z_dir
+    grab_pos += sign_y * 0.10 * obj_z_dir
     
     # [수정] 오른팔이 물리적 한계로 15cm 부근에서 멈춰버리므로, 20cm 이내로 들어오면 왼팔이 완전히(100%) 다가가서 잡도록 수정합니다.
     # 원래 분모가 0.30이면 10cm 이내로 들어와야 alpha=1.0이 되었지만, 0.20으로 바꾸면 20cm 이내에서 alpha=1.0이 됩니다.
@@ -248,7 +248,7 @@ def place_to_target(env: ManagerBasedRLEnv, asset_name: str, place_hand_regex: s
     sign_y = torch.sign(obj_z_dir[:, 1])
     sign_y = torch.where(sign_y == 0, torch.ones_like(sign_y), sign_y).unsqueeze(-1)
     grab_pos = obj_pos.clone()
-    grab_pos += sign_y * 0.08 * obj_z_dir
+    grab_pos += sign_y * 0.10 * obj_z_dir
     dist_to_grab = torch.norm(tcp_pos - grab_pos, dim=-1)
     is_held = 1.0 - torch.clamp((dist_to_grab - 0.04) / 0.20, min=0.0, max=1.0)    
     gripper_idx = robot.find_joints("panda_finger_joint[1-2]$")[0]
@@ -308,7 +308,7 @@ def place_gripper_close(env: ManagerBasedRLEnv, asset_name: str, place_hand_rege
     z_dir = torch.stack([2.0 * (x * z + w * y), 2.0 * (y * z - w * x), 1.0 - 2.0 * (x * x + y * y)], dim=-1)
     tcp_pos = wrist_pos + 0.1034 * z_dir
     
-    # 왼팔이 잡아야 할 위치는 큐브의 끝부분(X=-0.08)
+    # 왼팔이 잡아야 할 위치는 큐브의 끝부분(X=0.10)
     
     obj_quat = obj.data.root_quat_w
     qw, qx, qy, qz = obj_quat[:, 0], obj_quat[:, 1], obj_quat[:, 2], obj_quat[:, 3]
@@ -316,7 +316,7 @@ def place_gripper_close(env: ManagerBasedRLEnv, asset_name: str, place_hand_rege
     sign_y = torch.sign(obj_z_dir[:, 1])
     sign_y = torch.where(sign_y == 0, torch.ones_like(sign_y), sign_y).unsqueeze(-1)
     grab_pos = obj_pos.clone()
-    grab_pos += sign_y * 0.08 * obj_z_dir
+    grab_pos += sign_y * 0.10 * obj_z_dir
     
     dist_to_grab = torch.norm(tcp_pos - grab_pos, dim=-1)
     
@@ -354,7 +354,7 @@ def pick_release(env: ManagerBasedRLEnv, asset_name: str, pick_hand_regex: str, 
     sign_y = torch.sign(obj_z_dir[:, 1])
     sign_y = torch.where(sign_y == 0, torch.ones_like(sign_y), sign_y).unsqueeze(-1)
     grab_pos = obj_pos.clone()
-    grab_pos += sign_y * 0.08 * obj_z_dir
+    grab_pos += sign_y * 0.10 * obj_z_dir
     dist_to_grab = torch.norm(tcp_pos_l - grab_pos, dim=-1)
     place_is_held = 1.0 - torch.clamp((dist_to_grab - 0.02) / 0.03, min=0.0, max=1.0)
     
@@ -444,7 +444,7 @@ def gripper_close_reward(env: ManagerBasedRLEnv, asset_name: str, pick_hand_rege
     sign_y = torch.sign(obj_z_dir[:, 1])
     sign_y = torch.where(sign_y == 0, torch.ones_like(sign_y), sign_y).unsqueeze(-1)
     grab_pos_l = obj_pos.clone()
-    grab_pos_l += sign_y * 0.08 * obj_z_dir
+    grab_pos_l += sign_y * 0.10 * obj_z_dir
     dist_l = torch.norm(tcp_pos_l - grab_pos_l, dim=-1)
     is_near_left = 1.0 - torch.clamp((dist_l - 0.04) / 0.20, min=0.0, max=1.0)
     

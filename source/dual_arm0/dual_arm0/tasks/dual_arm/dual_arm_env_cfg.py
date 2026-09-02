@@ -174,7 +174,7 @@ class ObservationsCfg:
                 "asset_name": "robot",
                 "pick_hand_regex": "panda_hand_0",
                 "object_name": "object",
-                "x_offset": 0.07,
+                "x_offset": 0.10,
             },
         )
         place_to_obj = ObsTerm(
@@ -183,7 +183,7 @@ class ObservationsCfg:
                 "asset_name": "robot",
                 "place_hand_regex": "panda_hand$",
                 "object_name": "object",
-                "x_offset": -0.08,
+                "x_offset": -0.10,
             },
         )
         obj_to_target = ObsTerm(
@@ -266,7 +266,7 @@ class RewardsCfg:
             "asset_name": "robot",
             "pick_hand_regex": "panda_hand_0",
             "object_name": "object",
-            "x_offset": 0.07,
+            "x_offset": 0.10,
         },
     )
 
@@ -279,7 +279,7 @@ class RewardsCfg:
             "pick_hand_regex": "panda_hand_0",
             "object_name": "object",
             "gripper_joint_regex": "panda_finger_joint[1-2]_0",
-            "x_offset": 0.07,
+            "x_offset": 0.10,
         },
     )
 
@@ -302,7 +302,7 @@ class RewardsCfg:
             "asset_name": "robot",
             "pick_hand_regex": "panda_hand_0",
             "object_name": "object",
-            "x_offset": 0.07,
+            "x_offset": 0.10,
         },
     )
 
@@ -326,7 +326,7 @@ class RewardsCfg:
             "pick_hand_regex": "panda_hand_0",
             "object_name": "object",
             "gripper_joint_regex": "panda_finger_joint[1-2]_0",
-            "x_offset": 0.07,
+            "x_offset": 0.10,
         },
     )
 
@@ -339,7 +339,7 @@ class RewardsCfg:
             "pick_hand_regex": "panda_hand$",
             "object_name": "object",
             "gripper_joint_regex": "panda_finger_joint[1-2]$",
-            "x_offset": -0.08,
+            "x_offset": -0.10,
         },
     )
 
@@ -350,7 +350,7 @@ class RewardsCfg:
             "asset_name": "robot",
             "pick_hand_regex": "panda_hand_0",
             "object_name": "object",
-            "x_offset": 0.07,
+            "x_offset": 0.10,
         },
         weight=100.0,  # [수정] 50.0 -> 100.0 (목표 달성 보상을 다가가는 보상보다 무조건 크게 설정)
     )
