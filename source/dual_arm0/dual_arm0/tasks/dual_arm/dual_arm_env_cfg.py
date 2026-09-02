@@ -249,6 +249,18 @@ class RewardsCfg:
         }
     )
     
+    # [추가] 왼팔(Place Arm)이 물체가 없는데도 주먹을 쥐고 다가오는 꼼수(Fake Handshake) 방지
+    place_premature_gripper_close = RewTerm(
+        func=rewards.premature_gripper_close_penalty,
+        weight=-0.5,
+        params={
+            "asset_name": "robot",
+            "pick_hand_regex": "panda_hand$",
+            "object_name": "object",
+            "gripper_joint_regex": "panda_finger_joint[1-2]$"
+        },
+    )
+    
     # 2. 오른쪽 팔이 물체를 바닥에서 들어 올리면 추가 보상 부여
     pick_lift = RewTerm(
         func=rewards.object_lifted_by_pick_arm,

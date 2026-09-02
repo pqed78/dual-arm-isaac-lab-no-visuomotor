@@ -68,14 +68,17 @@ def object_lifted_by_pick_arm(env: ManagerBasedRLEnv, asset_name: str, pick_hand
     # 반경 4cm 이내 만점, 이후 20cm(0.20)에 걸쳐 아주 서서히 깎이도록 극도로 관대하게 변경합니다.
     is_near_arm = 1.0 - torch.clamp((dist - 0.04) / 0.20, min=0.0, max=1.0)
     
-    # [수정] 꼼수 방지 목적으로 넣었던 is_closed(그리퍼 닫힘) 조건 삭제.
-    # 이 조건이 있으면 탐험(Exploration) 시 우연히 큐브를 위로 띄우는 것조차 점수를 받지 못하게 되어,
-    # 로봇이 큐브가 위로 올라갈 수 있다는 사실 자체를 깨닫지 못합니다(탐험 절벽).
+    # [수정] 꼼수 방지 목적으로 넣었던 is_closed(그리퍼 닫힘) 조건을 다시 부활시킵니다.
+    # 단, 탐험 절벽을 막기 위해 연속적인(Continuous) 함수로 적용합니다.
+    gripper_idx, _ = robot.find_joints("panda_finger_joint[1-2]_0")
+    gripper_pos = robot.data.joint_pos[:, gripper_idx]
+    gripper_width = torch.sum(gripper_pos, dim=-1)
+    is_closed = 1.0 - torch.clamp(gripper_width / 0.08, min=0.0, max=1.0)
     
     # 누워있는 상태(높이 0.02m)에서 시작하므로, 아주 미세하게라도(0.022m) 위로 들리면 점수를 주기 시작합니다.
     lift_amt = torch.clamp((obj_pos[:, 2] - 0.022) / 0.078, min=0.0, max=1.0)
     
-    return lift_amt * is_near_arm
+    return lift_amt * is_near_arm * is_closed
 
 def handover_zone_approach(env: ManagerBasedRLEnv, asset_name: str, pick_hand_regex: str, object_name: str, handover_pos: list) -> torch.Tensor:
     """물체가 들어 올려진 상태에서 중앙 핸드오버(인계) 구역으로 다가갈수록 보상을 줍니다."""
@@ -98,16 +101,27 @@ def handover_zone_approach(env: ManagerBasedRLEnv, asset_name: str, pick_hand_re
     z_dir_z = 1.0 - 2.0 * (x * x + y * y)
     z_dir = torch.stack([z_dir_x, z_dir_y, z_dir_z], dim=-1)
     tcp_pos = wrist_pos + 0.1034 * z_dir
-    # [수정] 큐브 반경 4cm 이내로 쥐면 온전한 소유권(1.0)으로 인정하여 패널티 없음, 이후 20cm에 걸쳐 서서히 깎임
     dist_to_tcp = torch.norm(tcp_pos - obj_pos, dim=-1)
-    is_held = 1.0 - torch.clamp((dist_to_tcp - 0.04) / 0.20, min=0.0, max=1.0)
+    is_held_by_right = 1.0 - torch.clamp((dist_to_tcp - 0.04) / 0.20, min=0.0, max=1.0)
     
-    # [수정] 0.1m 이상 띄워야만 핸드오버 점수를 주는 가혹한 조건 때문에 로봇이 아예 시도를 안 함.
+    # 왼팔(Place Arm)이 잡고 있는지 확인 (오른팔이 놓고 물러나도 보상이 유지되게 하기 위함)
+    # 정규식 패턴을 하드코딩해서 찾습니다.
+    wrist_idx_l = robot.find_bodies("panda_hand$")[0]
+    wrist_pos_l = robot.data.body_pos_w[:, wrist_idx_l[0]]
+    wrist_quat_l = robot.data.body_quat_w[:, wrist_idx_l[0]]
+    w_l, x_l, y_l, z_l = wrist_quat_l[:, 0], wrist_quat_l[:, 1], wrist_quat_l[:, 2], wrist_quat_l[:, 3]
+    z_dir_l = torch.stack([2.0 * (x_l * z_l + w_l * y_l), 2.0 * (y_l * z_l - w_l * x_l), 1.0 - 2.0 * (x_l * x_l + y_l * y_l)], dim=-1)
+    tcp_pos_l = wrist_pos_l + 0.1034 * z_dir_l
+    dist_to_tcp_l = torch.norm(tcp_pos_l - obj_pos, dim=-1)
+    is_held_by_left = 1.0 - torch.clamp((dist_to_tcp_l - 0.04) / 0.20, min=0.0, max=1.0)
+    
+    is_held_by_any = torch.clamp(is_held_by_right + is_held_by_left, max=1.0)
+    
     # pick_lift와 동일하게 0.022m부터 점진적으로 점수를 주도록 완화 (lift_amt 적용)
     lift_amt = torch.clamp((obj_pos[:, 2] - 0.022) / 0.078, min=0.0, max=1.0)
     
-    # [수정] exp(-5.0 * dist)는 거리가 멀면 기울기 소실(Vanishing Gradient)이 발생함. -2.0으로 완화.
-    return torch.exp(-2.0 * dist) * lift_amt * is_held
+    # 오른팔이 그리퍼를 열어도 왼팔이 잡고 있으면 is_held_by_any가 유지되어 점수가 깎이지 않음!
+    return torch.exp(-2.0 * dist) * lift_amt * is_held_by_any
 
 def place_reach_object(env: ManagerBasedRLEnv, asset_name: str, place_hand_regex: str, object_name: str, handover_pos: list) -> torch.Tensor:
     """물체가 핸드오버 구역 내에 있을 때만, 내려놓는 팔(Place Arm) 그리퍼가 물체에 가까워질수록 보상을 줍니다."""
