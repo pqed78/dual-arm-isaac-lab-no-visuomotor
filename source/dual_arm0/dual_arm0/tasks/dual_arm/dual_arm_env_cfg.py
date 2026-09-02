@@ -284,6 +284,7 @@ class RewardsCfg:
     # 3. 들어 올린 물체를 중앙의 핸드오버 지점(HANDOVER_POS)으로 가져올수록 보상 부여
     handover_approach = RewTerm(
         func=rewards.handover_zone_approach,
+        weight=500.0,
         params={
             "asset_name": "robot",
             "pick_hand_regex": "panda_hand_0",
