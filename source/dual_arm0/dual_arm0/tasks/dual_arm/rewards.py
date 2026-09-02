@@ -112,8 +112,12 @@ def handover_zone_approach(env: ManagerBasedRLEnv, asset_name: str, pick_hand_re
     w_l, x_l, y_l, z_l = wrist_quat_l[:, 0], wrist_quat_l[:, 1], wrist_quat_l[:, 2], wrist_quat_l[:, 3]
     z_dir_l = torch.stack([2.0 * (x_l * z_l + w_l * y_l), 2.0 * (y_l * z_l - w_l * x_l), 1.0 - 2.0 * (x_l * x_l + y_l * y_l)], dim=-1)
     tcp_pos_l = wrist_pos_l + 0.1034 * z_dir_l
-    dist_to_tcp_l = torch.norm(tcp_pos_l - obj_pos, dim=-1)
-    is_held_by_left = 1.0 - torch.clamp((dist_to_tcp_l - 0.04) / 0.20, min=0.0, max=1.0)
+    
+    # [수정] 왼팔은 충돌 방지를 위해 큐브 끝부분(X=-0.04)을 잡고 있으므로, 잡고 있는지 판정할 때 오프셋 적용
+    grab_pos_l = obj_pos.clone()
+    grab_pos_l[:, 0] -= 0.04
+    dist_to_grab_l = torch.norm(tcp_pos_l - grab_pos_l, dim=-1)
+    is_held_by_left = 1.0 - torch.clamp((dist_to_grab_l - 0.04) / 0.20, min=0.0, max=1.0)
     
     is_held_by_any = torch.clamp(is_held_by_right + is_held_by_left, max=1.0)
     
