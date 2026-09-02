@@ -424,6 +424,9 @@ def pick_grasp_pose_reward(env: ManagerBasedRLEnv, asset_name: str, pick_hand_re
     dist = torch.norm(tcp_pos - obj_pos, dim=-1)
     is_near_arm = 1.0 - torch.clamp((dist - 0.04) / 0.20, min=0.0, max=1.0)
     
+    # 바닥에서 집어올릴 때의 수직(Top-down) 자세 보상
+    pose_reward = vertical_alignment * finger_alignment
+    
     # 5. Handover 자세 (오른팔이 왼팔을 향해 Y축 평행하게 마주보기)
     # TCP Z-axis 가 월드 +Y 방향을 향해야 함
     handover_approach_alignment = torch.clamp(z_dir_y, min=0.0, max=1.0)
