@@ -238,6 +238,17 @@ class RewardsCfg:
         }
     )
     
+    # 3-2. 오른쪽 팔이 물체를 든 후 왼팔을 향해 Y축으로 자세를 트는 보상
+    handover_pose_right = RewTerm(
+        func=rewards.handover_pose_right,
+        weight=50.0,
+        params={
+            "asset_name": "robot",
+            "pick_hand_regex": "panda_hand_0",
+            "object_name": "object",
+        },
+    )
+    
     # 1-5. 큐브가 손 안에 없는데 미리 주먹을 쥐는 행위 방지 (Fist-bumping 페널티)
     premature_gripper_close = RewTerm(
         func=rewards.premature_gripper_close_penalty,

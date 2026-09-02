@@ -430,20 +430,39 @@ def pick_grasp_pose_reward(env: ManagerBasedRLEnv, asset_name: str, pick_hand_re
     # 바닥에서 집어올릴 때의 수직(Top-down) 자세 보상
     pose_reward = vertical_alignment * finger_alignment
     
+    # [수정] 보상 계곡(Reward Valley) 방지: 물체를 들어올릴 때 자세 점수가 깎이는 것을 막기 위해,
+    # 들어올리면 원래 만점을 주어 점수를 유지하게 합니다. 
+    # (들려진 후의 Y축 정렬 보상은 새로운 함수 handover_pose_right에서 추가로 지급합니다!)
+    is_lifted = torch.clamp((obj_pos[:, 2] - 0.05) / 0.05, min=0.0, max=1.0) # 5cm 이상 들리면 1.0
+    relaxed_pose_reward = torch.lerp(pose_reward, torch.ones_like(pose_reward), is_lifted)
+    
+    return relaxed_pose_reward * is_near_arm
+
+def handover_pose_right(env: ManagerBasedRLEnv, asset_name: str, pick_hand_regex: str, object_name: str) -> torch.Tensor:
+    """오른팔(Pick Arm)이 큐브를 들고 나서 왼팔을 향해 정면(+Y)으로 자세를 바꾸면 보상을 줍니다."""
+    robot = env.scene[asset_name]
+    obj = env.scene[object_name]
+    
+    wrist_idx = robot.find_bodies(pick_hand_regex)[0]
+    wrist_quat = robot.data.body_quat_w[:, wrist_idx[0]]
+    
     # 5. Handover 자세 (오른팔이 왼팔을 향해 Y축 평행하게 마주보기)
+    w, x, y, z = wrist_quat[:, 0], wrist_quat[:, 1], wrist_quat[:, 2], wrist_quat[:, 3]
+    z_dir_y = 2.0 * (y * z - w * x)
+    robot_y_z = 2.0 * (y * z + w * x)
+    
     # TCP Z-axis 가 월드 +Y 방향을 향해야 함
     handover_approach_alignment = torch.clamp(z_dir_y, min=0.0, max=1.0)
     # TCP Y-axis (손가락) 가 월드 수직(Z축)을 향해야 함 (위아래로 잡기)
     handover_finger_alignment = torch.abs(robot_y_z)
+    
     handover_pose_reward = handover_approach_alignment * handover_finger_alignment
     
-    # [수정] 유저 피드백: "handover시 y축에 평행한 방향으로 오른손 왼손이 마주보면서 전달"
-    # 물체가 지면에서 어느 정도 들리면, 바닥에서 집어올리는 수직 자세(pose_reward)에서
-    # 왼팔을 마주보는 수평 전달 자세(handover_pose_reward)로 자연스럽게 전환되도록 유도합니다.
-    is_lifted = torch.clamp((obj_pos[:, 2] - 0.05) / 0.05, min=0.0, max=1.0) # 5cm 이상 들리면 1.0
-    relaxed_pose_reward = torch.lerp(pose_reward, handover_pose_reward, is_lifted)
+    # 물체가 들려있을 때만 이 자세를 취하도록 함
+    obj_pos = obj.data.root_pos_w
+    is_lifted = torch.clamp((obj_pos[:, 2] - 0.05) / 0.05, min=0.0, max=1.0)
     
-    return relaxed_pose_reward * is_near_arm
+    return handover_pose_reward * is_lifted
 
 def premature_gripper_close_penalty(env: ManagerBasedRLEnv, asset_name: str, pick_hand_regex: str, object_name: str, gripper_joint_regex: str) -> torch.Tensor:
     """큐브가 손가락 사이에 없는데도 미리 주먹을 쥐고 다가가서 큐브를 치고 다니는 행위를 방지하는 페널티입니다."""
