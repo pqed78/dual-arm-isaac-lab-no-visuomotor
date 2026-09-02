@@ -302,12 +302,7 @@ class RewardsCfg:
         weight=100.0,
     )
     
-    # 4-1. 왼쪽 팔이 큐브를 측면에서 수평으로 예쁘게 잡도록 자세를 유도하는 보상
-    place_grasp_pose = RewTerm(
-        func=rewards.place_grasp_pose_reward,
-        params={"asset_name": "robot", "place_hand_regex": "panda_hand$", "object_name": "object", "handover_pos": HANDOVER_POS},
-        weight=50.0, # [수정] 10.0 -> 50.0 (자세 강제를 위해 오른팔과 동일하게 상향)
-    )
+
     
     # 4-2. 왼쪽 팔이 큐브를 넘겨받기 위해 꽉 쥐었을 때 보상 부여 (Place Gripper Close)
     place_gripper_close = RewTerm(
