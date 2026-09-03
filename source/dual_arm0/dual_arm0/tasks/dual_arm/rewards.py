@@ -305,7 +305,7 @@ def place_to_target(env: ManagerBasedRLEnv, asset_name: str, place_hand_regex: s
     # [수정 2] 오른팔이 완벽하게 놔주었는지 확인 (양팔이 같이 끌고 가는 꼼수 방지)
     gripper_idx_r = robot.find_joints("panda_finger_joint[1-2]_0")[0]
     pick_gripper_width = torch.sum(robot.data.joint_pos[:, gripper_idx_r], dim=-1)
-    pick_is_released = (pick_gripper_width > 0.07).float() # 거의 다 폈을 때만 인정
+    pick_is_released = torch.clamp((pick_gripper_width - 0.03) / 0.05, 0.0, 1.0) # 오른팔이 벌린 만큼만 비율로 허용 (왼팔 학습 블로킹 방지)
     
     # [수정 3] Z축(높이)을 포함한 완벽한 3D 거리 계산 (허공에서 높은 점수 갈취 방지)
     dist_to_target_3d = torch.norm(obj_pos - target.data.root_pos_w, dim=-1)
