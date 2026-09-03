@@ -261,8 +261,19 @@ def place_reach_object(env: ManagerBasedRLEnv, asset_name: str, place_hand_regex
     
     dist = torch.norm(tcp_pos - dynamic_target_pos, dim=-1)
     
-    # [수정] exp(-10.0 * dist)는 거리가 멀면 0이 되어버려 학습이 불가능함(Vanishing Gradient). -2.0으로 완화.
-    return torch.exp(-2.0 * dist)
+    # [수정] 왼팔이 바통을 성공적으로 쥐었는지(left_secured) 확인
+    gripper_idx_l = robot.find_joints("panda_finger_joint[1-2]$")[0]
+    place_gripper_width = torch.sum(robot.data.joint_pos[:, gripper_idx_l], dim=-1)
+    
+    dist_to_grab_l = torch.norm(tcp_pos - grab_pos, dim=-1)
+    place_is_held_strict = (dist_to_grab_l < 0.03).float()
+    place_is_closed_strict = (place_gripper_width < 0.04).float()
+    left_secured = place_is_held_strict * place_is_closed_strict
+    
+    # [수정] 왼팔이 쥐고(left_secured) 바닥으로 내려갈 때, wait_pos(허공)로 다시 끌어당기는 고무줄 현상(Reward Cliff) 방지
+    # 쥐었으면 무조건 만점(1.0)을 주어 마음 놓고 바닥으로 향하게 합니다.
+    base_reach = torch.exp(-2.0 * dist)
+    return torch.clamp(base_reach + left_secured, max=1.0)
 
 def place_to_target(env: ManagerBasedRLEnv, asset_name: str, place_hand_regex: str, object_name: str, target_name: str) -> torch.Tensor:
     """왼쪽 팔(Place Arm)이 큐브를 쥐고 타겟을 향해 이동할 때 거리 비례 보상을 줍니다 (보상 계곡 방어)."""
