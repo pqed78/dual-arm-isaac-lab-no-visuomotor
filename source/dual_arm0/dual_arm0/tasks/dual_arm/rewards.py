@@ -373,7 +373,9 @@ def place_gripper_close(env: ManagerBasedRLEnv, asset_name: str, place_hand_rege
     # 그리퍼 닫힘 조건: 4cm 이하로 닫히면 만점
     is_closed = torch.clamp((0.08 - gripper_width) / 0.05, min=0.0, max=1.0)
     
-    return lift_amt * is_engulfing * is_closed
+    # [수정] 왼팔이 쥐고 있으면(is_engulfing이 높으면) 바닥으로 내려가도 점수 유지
+    lift_amt_final = torch.clamp(lift_amt + is_engulfing, max=1.0)
+    return lift_amt_final * is_engulfing * is_closed
 
 def pick_release(env: ManagerBasedRLEnv, asset_name: str, pick_hand_regex: str, place_hand_regex: str, object_name: str) -> torch.Tensor:
     """왼쪽 팔이 큐브를 완벽히 쥐었을 때, 오른쪽 팔이 그립을 풀면 보상."""
