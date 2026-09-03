@@ -431,9 +431,9 @@ def pick_release(env: ManagerBasedRLEnv, asset_name: str, pick_hand_regex: str, 
     # [수정] 오른팔이 놓아주는 것도 연속적인 보상으로 변경 (0.04에서 0.08로 벌릴수록 1.0)
     pick_is_released = torch.clamp((pick_gripper_width - 0.03) / 0.05, 0.0, 1.0)
     
-    # [수정] 물체가 바닥에 있을 때 왼팔이 다가가서 잡고 보상을 훔치는(Farm) 꼼수를 막기 위해,
-    # 핸드오버는 반드시 허공(Z > 10cm)에서 이루어져야만 보상을 주도록 lift_amt를 곱합니다.
-    lift_amt = torch.clamp((obj_pos[:, 2] - 0.05) / 0.05, min=0.0, max=1.0)
+    # [수정] 왼팔이 쥐고(left_secured) 타겟(바닥)으로 배달 갈 때 lift_amt 점수가 0으로 떨어져서 pick_release 점수 300점이 증발하는 현상(Exploration Cliff) 방지
+    base_lift = torch.clamp((obj_pos[:, 2] - 0.05) / 0.05, min=0.0, max=1.0)
+    lift_amt = torch.clamp(base_lift + left_secured, max=1.0) # 왼팔이 쥐면 높이 제한 면제
     
     return left_secured * pick_is_released * lift_amt
 
