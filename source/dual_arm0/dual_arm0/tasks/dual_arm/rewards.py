@@ -577,13 +577,14 @@ def premature_gripper_close_penalty(env: ManagerBasedRLEnv, asset_name: str, pic
     gripper_width = torch.sum(gripper_pos, dim=-1)
     
     # 타겟(끄트머리)에서 6cm보다 멀면 미포획 상태로 간주
-    not_engulfing = dist > 0.06
+    not_engulfing = (dist > 0.06).float()
     
-    # 그리퍼가 4cm(0.04m)보다 작게 열려 있으면 주먹을 쥐었다고 판단
-    is_closed = gripper_width < 0.04
+    # [수정] 4cm 이하면 처벌하는 흑백 논리(Boolean)를 버리고, 연속적(Continuous)으로 처벌합니다.
+    # 8cm(완전 개방)일 때는 페널티 0, 손을 오므릴수록 페널티가 증가하여 4cm 이하일 때 최대 페널티를 받게 됩니다.
+    is_closing = torch.clamp((0.08 - gripper_width) / 0.04, min=0.0, max=1.0)
     
-    # 큐브가 멀리 있거나 위에 얹혀 있는데 주먹을 쥐고 있으면 페널티 반환
-    return (not_engulfing * is_closed).float()
+    # 허공에서 손을 조금이라도 오므리면 그에 비례해서 강력한 감점 부과
+    return not_engulfing * is_closing
 
 def place_grasp_pose_reward(env: ManagerBasedRLEnv, asset_name: str, place_hand_regex: str, object_name: str, handover_pos: list) -> torch.Tensor:
     """왼쪽 팔(Place Arm)이 핸드오버 구역에서 큐브의 측면을 수평으로 잡도록 유도하는 보상.
