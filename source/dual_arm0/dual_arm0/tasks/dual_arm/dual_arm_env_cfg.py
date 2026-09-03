@@ -317,7 +317,7 @@ class RewardsCfg:
     pick_release = RewTerm(
         func=rewards.pick_release,
         params={"asset_name": "robot", "pick_hand_regex": "panda_hand_0", "place_hand_regex": "panda_hand$", "object_name": "object"},
-        weight=100.0,
+        weight=300.0, # [수정] 100 -> 300 (오른팔이 바통을 놓으면 pick_lift 점수 100점을 잃게 되므로, 놓는 것이 무조건 이득이 되도록 300점으로 대폭 상향)
     )
     
     # 5. 왼쪽 팔이 큐브를 쥐고 목표 지점을 향해 내려갈 때 촘촘한 거리 비례 보상 부여 (보상 계곡 극복)
