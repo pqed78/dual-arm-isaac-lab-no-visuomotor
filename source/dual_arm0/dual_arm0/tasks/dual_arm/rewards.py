@@ -76,7 +76,19 @@ def object_lifted_by_pick_arm(env: ManagerBasedRLEnv, asset_name: str, pick_hand
     tcp_pos = wrist_pos + 0.1034 * z_dir
     
     obj_pos = obj.data.root_pos_w
-    dist = torch.norm(tcp_pos - obj_pos, dim=-1)
+    obj_quat = obj.data.root_quat_w
+    
+    ow, ox, oy, oz = obj_quat[:, 0], obj_quat[:, 1], obj_quat[:, 2], obj_quat[:, 3]
+    cube_z_x = 2.0 * (ox * oz + ow * oy)
+    cube_z_y = 2.0 * (oy * oz - ow * ox)
+    cube_z_z = 1.0 - 2.0 * (ox * ox + oy * oy)
+    cube_z_dir = torch.stack([cube_z_x, cube_z_y, cube_z_z], dim=-1)
+    
+    # 오른팔 타겟: -Y 방향 8cm 끄트머리
+    sign_y = torch.sign(cube_z_dir[:, 1])
+    grab_pos = obj_pos - (sign_y.unsqueeze(-1) * 0.08 * cube_z_dir)
+    
+    dist = torch.norm(tcp_pos - grab_pos, dim=-1)
     # [수정] 큐브를 쥐고 이동할 때 살짝 삐뚤어지거나 미끄러져도(Slip) 점수가 폭락하지 않도록
     # 반경 4cm 이내 만점, 이후 20cm(0.20)에 걸쳐 아주 서서히 깎이도록 극도로 관대하게 변경합니다.
     is_near_arm = 1.0 - torch.clamp((dist - 0.04) / 0.20, min=0.0, max=1.0)
@@ -268,9 +280,16 @@ def place_gripper_close(env: ManagerBasedRLEnv, asset_name: str, place_hand_rege
     z_dir = torch.stack([2.0 * (x * z + w * y), 2.0 * (y * z - w * x), 1.0 - 2.0 * (x * x + y * y)], dim=-1)
     tcp_pos = wrist_pos + 0.1034 * z_dir
     
-    # 왼팔이 잡아야 할 위치는 큐브의 끝부분(X=-0.04)
-    grab_pos = obj_pos.clone()
-    grab_pos[:, 0] -= 0.04
+    # 왼팔이 잡아야 할 위치: 실시간 동적 8cm 끄트머리 (+Y 방향)
+    obj_quat = obj.data.root_quat_w
+    ow, ox, oy, oz = obj_quat[:, 0], obj_quat[:, 1], obj_quat[:, 2], obj_quat[:, 3]
+    cube_z_x = 2.0 * (ox * oz + ow * oy)
+    cube_z_y = 2.0 * (oy * oz - ow * ox)
+    cube_z_z = 1.0 - 2.0 * (ox * ox + oy * oy)
+    cube_z_dir = torch.stack([cube_z_x, cube_z_y, cube_z_z], dim=-1)
+    
+    sign_y = torch.sign(cube_z_dir[:, 1])
+    grab_pos = obj_pos + (sign_y.unsqueeze(-1) * 0.08 * cube_z_dir)
     
     dist_to_grab = torch.norm(tcp_pos - grab_pos, dim=-1)
     
@@ -342,7 +361,19 @@ def gripper_close_reward(env: ManagerBasedRLEnv, asset_name: str, pick_hand_rege
     tcp_pos = wrist_pos + 0.1034 * z_dir
     
     obj_pos = obj.data.root_pos_w
-    dist = torch.norm(tcp_pos - obj_pos, dim=-1)
+    obj_quat = obj.data.root_quat_w
+    
+    ow, ox, oy, oz = obj_quat[:, 0], obj_quat[:, 1], obj_quat[:, 2], obj_quat[:, 3]
+    cube_z_x = 2.0 * (ox * oz + ow * oy)
+    cube_z_y = 2.0 * (oy * oz - ow * ox)
+    cube_z_z = 1.0 - 2.0 * (ox * ox + oy * oy)
+    cube_z_dir = torch.stack([cube_z_x, cube_z_y, cube_z_z], dim=-1)
+    
+    # 오른팔 타겟: -Y 방향 8cm 끄트머리
+    sign_y = torch.sign(cube_z_dir[:, 1])
+    grab_pos = obj_pos - (sign_y.unsqueeze(-1) * 0.08 * cube_z_dir)
+    
+    dist = torch.norm(tcp_pos - grab_pos, dim=-1)
     
     # 그리퍼 폭 계산
     gripper_idx, _ = robot.find_joints(gripper_joint_regex)
@@ -441,7 +472,19 @@ def pick_grasp_pose_reward(env: ManagerBasedRLEnv, asset_name: str, pick_hand_re
     # [수정] 거리가 멀 때 제자리에서 허공에 대고 자세만 잡으며 점수를 훔치는(Statue) 현상을 막기 위해,
     # 큐브 근처(20cm 이내)에 다가갔을 때만 자세 보상을 주도록 거리에 비례하여 곱합니다.
     obj_pos = obj.data.root_pos_w
-    dist = torch.norm(tcp_pos - obj_pos, dim=-1)
+    obj_quat = obj.data.root_quat_w
+    
+    ow, ox, oy, oz = obj_quat[:, 0], obj_quat[:, 1], obj_quat[:, 2], obj_quat[:, 3]
+    cube_z_x = 2.0 * (ox * oz + ow * oy)
+    cube_z_y = 2.0 * (oy * oz - ow * ox)
+    cube_z_z = 1.0 - 2.0 * (ox * ox + oy * oy)
+    cube_z_dir = torch.stack([cube_z_x, cube_z_y, cube_z_z], dim=-1)
+    
+    # 오른팔 타겟: -Y 방향 8cm 끄트머리
+    sign_y = torch.sign(cube_z_dir[:, 1])
+    grab_pos = obj_pos - (sign_y.unsqueeze(-1) * 0.08 * cube_z_dir)
+    
+    dist = torch.norm(tcp_pos - grab_pos, dim=-1)
     is_near_arm = 1.0 - torch.clamp((dist - 0.04) / 0.20, min=0.0, max=1.0)
     
     pose_reward = vertical_alignment * finger_alignment
@@ -470,7 +513,19 @@ def premature_gripper_close_penalty(env: ManagerBasedRLEnv, asset_name: str, pic
     tcp_pos = wrist_pos + 0.1034 * z_dir
     
     obj_pos = obj.data.root_pos_w
-    dist = torch.norm(tcp_pos - obj_pos, dim=-1)
+    obj_quat = obj.data.root_quat_w
+    
+    ow, ox, oy, oz = obj_quat[:, 0], obj_quat[:, 1], obj_quat[:, 2], obj_quat[:, 3]
+    cube_z_x = 2.0 * (ox * oz + ow * oy)
+    cube_z_y = 2.0 * (oy * oz - ow * ox)
+    cube_z_z = 1.0 - 2.0 * (ox * ox + oy * oy)
+    cube_z_dir = torch.stack([cube_z_x, cube_z_y, cube_z_z], dim=-1)
+    
+    # 오른팔 타겟: -Y 방향 8cm 끄트머리
+    sign_y = torch.sign(cube_z_dir[:, 1])
+    grab_pos = obj_pos - (sign_y.unsqueeze(-1) * 0.08 * cube_z_dir)
+    
+    dist = torch.norm(tcp_pos - grab_pos, dim=-1)
     
     # 그리퍼 폭 계산
     gripper_idx, _ = robot.find_joints(gripper_joint_regex)
