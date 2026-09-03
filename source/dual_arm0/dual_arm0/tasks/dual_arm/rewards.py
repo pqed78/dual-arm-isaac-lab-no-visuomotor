@@ -66,13 +66,13 @@ def pick_reach_object(env: ManagerBasedRLEnv, asset_name: str, pick_hand_regex: 
     grab_pos_l = obj_pos + (sign_y.unsqueeze(-1) * 0.08 * cube_z_dir)
     dist_to_grab_l = torch.norm(tcp_pos_l - grab_pos_l, dim=-1)
     
-    place_is_held = 1.0 - torch.clamp((dist_to_grab_l - 0.03) / 0.20, min=0.0, max=1.0)
-    
     gripper_idx_l = robot.find_joints("panda_finger_joint[1-2]$")[0]
     place_gripper_width = torch.sum(robot.data.joint_pos[:, gripper_idx_l], dim=-1)
-    place_is_closed = 1.0 - torch.clamp((place_gripper_width - 0.03) / 0.05, 0.0, 1.0)
     
-    left_secured = place_is_held * place_is_closed
+    # [수정] 왼팔이 '완벽하게' 잡았을 때만 발동하도록 엄격한 Boolean으로 변경 (연속값이면 초기 접근 단계부터 간섭 발생)
+    place_is_held_strict = (dist_to_grab_l < 0.05).float()
+    place_is_closed_strict = (place_gripper_width < 0.04).float()
+    left_secured = place_is_held_strict * place_is_closed_strict
     
     # 거리가 가까워질수록 1에 수렴하는 연속적인 보상
     # exp(-10*dist)를 사용하여 멀리서부터 부드럽게 이끌어줍니다.
@@ -129,7 +129,29 @@ def object_lifted_by_pick_arm(env: ManagerBasedRLEnv, asset_name: str, pick_hand
     # 누워있는 상태(높이 0.02m)에서 시작하므로, 아주 미세하게라도(0.017m) 위로 들리면 점수를 주기 시작합니다.
     lift_amt = torch.clamp((obj_pos[:, 2] - 0.017) / 0.078, min=0.0, max=1.0)
     
-    return lift_amt * is_near_arm * is_closed
+    # [수정] 왼팔 상태 확인 (왼팔이 완벽하게 잡았다면 오른팔은 굳이 들고 있을 필요가 없음)
+    wrist_idx_l = robot.find_bodies("panda_hand$")[0]
+    wrist_pos_l = robot.data.body_pos_w[:, wrist_idx_l[0]]
+    wrist_quat_l = robot.data.body_quat_w[:, wrist_idx_l[0]]
+    w_l, x_l, y_l, z_l = wrist_quat_l[:, 0], wrist_quat_l[:, 1], wrist_quat_l[:, 2], wrist_quat_l[:, 3]
+    z_dir_l = torch.stack([2.0*(x_l*z_l + w_l*y_l), 2.0*(y_l*z_l - w_l*x_l), 1.0 - 2.0*(x_l*x_l + y_l*y_l)], dim=-1)
+    tcp_pos_l = wrist_pos_l + 0.1034 * z_dir_l
+    
+    sign_y = torch.sign(cube_z_dir[:, 1])
+    grab_pos_l = obj_pos + (sign_y.unsqueeze(-1) * 0.08 * cube_z_dir)
+    dist_to_grab_l = torch.norm(tcp_pos_l - grab_pos_l, dim=-1)
+    
+    gripper_idx_l = robot.find_joints("panda_finger_joint[1-2]$")[0]
+    place_gripper_width = torch.sum(robot.data.joint_pos[:, gripper_idx_l], dim=-1)
+    
+    # 엄격한 Boolean 조건으로 변경
+    place_is_held_strict = (dist_to_grab_l < 0.05).float()
+    place_is_closed_strict = (place_gripper_width < 0.04).float()
+    left_secured = place_is_held_strict * place_is_closed_strict
+    
+    # 왼팔이 넘겨받았으면(left_secured == 1.0), 오른팔이 놓아주더라도 점수를 그대로 유지해줍니다!
+    right_secured = is_near_arm * is_closed
+    return lift_amt * torch.clamp(right_secured + left_secured, max=1.0)
 
 def handover_zone_approach(env: ManagerBasedRLEnv, asset_name: str, pick_hand_regex: str, object_name: str, handover_pos: list) -> torch.Tensor:
     """물체가 들어 올려진 상태에서 중앙 핸드오버(인계) 구역으로 다가갈수록 보상을 줍니다."""
