@@ -38,13 +38,13 @@ class DualArmSceneCfg(InteractiveSceneCfg):
     # DUAL_FRANKA_CFG에서 기본 설정을 가져오며, 환경 네임스페이스를 반영하여 경로를 설정합니다.
     robot = DUAL_FRANKA_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
 
-    # object to manipulate (cylinder) (조작할 대상 물체인 원기둥 설정)
+    # object to manipulate (cuboid) (조작할 대상 물체인 직육면체 바통 설정)
     object = RigidObjectCfg(
         prim_path="{ENV_REGEX_NS}/Object", # 물체가 생성될 경로
         # 누워있는 상태: Y축 기준 90도 회전 (w=0.7071, y=0.7071), 중심 높이는 두께(0.04)의 절반인 0.02
         init_state=RigidObjectCfg.InitialStateCfg(pos=(0.5, 0.0, 0.02), rot=(0.7071, 0.0, 0.7071, 0.0)), 
         spawn=sim_utils.CuboidCfg(
-            size=(0.04, 0.04, 0.1), # 가로 4cm, 세로 4cm, 높이 10cm의 직육면체 (원기둥 대신 굴러가지 않게 함)
+            size=(0.04, 0.04, 0.25), # 가로 4cm, 세로 4cm, 길이 25cm의 직육면체 바통
             rigid_props=sim_utils.RigidBodyPropertiesCfg(), # 강체 물리 속성 활성화
             mass_props=sim_utils.MassPropertiesCfg(mass=0.2), # [수정] 1.0kg은 너무 무거워서 들고 이동할 때 놓침. 0.2kg으로 경량화.
             collision_props=sim_utils.CollisionPropertiesCfg(), # 충돌 속성 활성화
@@ -161,11 +161,11 @@ class EventCfg:
         },
     )
     
-    # 물체 초기화 이벤트 (커리큘럼 적용: 처음엔 고정, 점진적으로 랜덤 스폰)
+    # 물체 초기화 이벤트 (현재 커리큘럼 비활성화: 처음부터 무작위 스폰 적용)
     reset_object = EventTerm(
         func=custom_events.reset_object_with_curriculum,
         mode="reset",
-        params={"enable_curriculum": False}, # [수정] 튜토리얼(고정 스폰) 모드를 끌 수 있는 옵션. False면 처음부터 무작위 스폰.
+        params={"enable_curriculum": False}, # [수정] False로 설정되어 있으므로 커리큘럼(점진적 난이도 증가)을 건너뛰고 즉시 랜덤 스폰됩니다.
     )
 
     # 목표 원(Target) 초기화 이벤트 (매 에피소드마다 원의 위치를 무작위로 스폰)
