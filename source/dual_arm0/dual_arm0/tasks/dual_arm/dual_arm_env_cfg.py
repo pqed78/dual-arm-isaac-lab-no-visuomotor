@@ -303,7 +303,7 @@ class RewardsCfg:
     place_grasp_pose = RewTerm(
         func=rewards.place_grasp_pose_reward,
         params={"asset_name": "robot", "place_hand_regex": "panda_hand$", "object_name": "object", "handover_pos": HANDOVER_POS},
-        weight=10.0,
+        weight=100.0, # [수정] 10 -> 100 (바통이 비스듬하게 회전되어 있어도, 왼팔이 손목을 비틀어 바통의 평평한 면과 완벽하게 수평을 맞추도록 강제함. 모서리 충돌 방지)
     )
     
     # 4-2. 왼쪽 팔이 바통 끄트머리(6cm 반경 내)에 도달해 꽉 쥐었을 때 보상 부여 (Place Gripper Close)
