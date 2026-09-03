@@ -91,7 +91,7 @@ def object_lifted_by_pick_arm(env: ManagerBasedRLEnv, asset_name: str, pick_hand
     dist = torch.norm(tcp_pos - grab_pos, dim=-1)
     # [수정] 큐브를 쥐고 이동할 때 살짝 삐뚤어지거나 미끄러져도(Slip) 점수가 폭락하지 않도록
     # 반경 4cm 이내 만점, 이후 20cm(0.20)에 걸쳐 아주 서서히 깎이도록 극도로 관대하게 변경합니다.
-    is_near_arm = 1.0 - torch.clamp((dist - 0.04) / 0.20, min=0.0, max=1.0)
+    is_near_arm = 1.0 - torch.clamp((dist - 0.03) / 0.20, min=0.0, max=1.0)
     
     # [수정] 꼼수 방지 목적으로 넣었던 is_closed(그리퍼 닫힘) 조건을 다시 부활시킵니다.
     # 단, 탐험 절벽을 막기 위해 연속적인(Continuous) 함수로 적용합니다.
@@ -100,8 +100,8 @@ def object_lifted_by_pick_arm(env: ManagerBasedRLEnv, asset_name: str, pick_hand
     gripper_width = torch.sum(gripper_pos, dim=-1)
     is_closed = 1.0 - torch.clamp(gripper_width / 0.08, min=0.0, max=1.0)
     
-    # 누워있는 상태(높이 0.02m)에서 시작하므로, 아주 미세하게라도(0.022m) 위로 들리면 점수를 주기 시작합니다.
-    lift_amt = torch.clamp((obj_pos[:, 2] - 0.022) / 0.078, min=0.0, max=1.0)
+    # 누워있는 상태(높이 0.02m)에서 시작하므로, 아주 미세하게라도(0.017m) 위로 들리면 점수를 주기 시작합니다.
+    lift_amt = torch.clamp((obj_pos[:, 2] - 0.017) / 0.078, min=0.0, max=1.0)
     
     return lift_amt * is_near_arm * is_closed
 
@@ -140,7 +140,7 @@ def handover_zone_approach(env: ManagerBasedRLEnv, asset_name: str, pick_hand_re
     grab_pos_l = obj_pos + (sign_y.unsqueeze(-1) * 0.08 * cube_z_dir)
     
     dist_to_tcp = torch.norm(tcp_pos - grab_pos_r, dim=-1)
-    is_held_by_right = 1.0 - torch.clamp((dist_to_tcp - 0.04) / 0.20, min=0.0, max=1.0)
+    is_held_by_right = 1.0 - torch.clamp((dist_to_tcp - 0.03) / 0.20, min=0.0, max=1.0)
     
     # 왼팔(Place Arm)이 잡고 있는지 확인 (오른팔이 놓고 물러나도 보상이 유지되게 하기 위함)
     # 정규식 패턴을 하드코딩해서 찾습니다.
@@ -152,12 +152,12 @@ def handover_zone_approach(env: ManagerBasedRLEnv, asset_name: str, pick_hand_re
     tcp_pos_l = wrist_pos_l + 0.1034 * z_dir_l
     
     dist_to_tcp_l = torch.norm(tcp_pos_l - grab_pos_l, dim=-1)
-    is_held_by_left = 1.0 - torch.clamp((dist_to_tcp_l - 0.04) / 0.20, min=0.0, max=1.0)
+    is_held_by_left = 1.0 - torch.clamp((dist_to_tcp_l - 0.03) / 0.20, min=0.0, max=1.0)
     
     is_held_by_any = torch.clamp(is_held_by_right + is_held_by_left, max=1.0)
     
-    # pick_lift와 동일하게 0.022m부터 점진적으로 점수를 주도록 완화 (lift_amt 적용)
-    lift_amt = torch.clamp((obj_pos[:, 2] - 0.022) / 0.078, min=0.0, max=1.0)
+    # pick_lift와 동일하게 0.017m부터 점진적으로 점수를 주도록 완화 (lift_amt 적용)
+    lift_amt = torch.clamp((obj_pos[:, 2] - 0.017) / 0.078, min=0.0, max=1.0)
     
     # [수정] 오른팔이 바통을 잡고 있을 때, 많이 남은 쪽(긴 부분)이 왼팔 방향(+Y)을 향하도록 유도
     # 손끝(tcp_pos)에서 바통 중심(obj_pos)으로 향하는 벡터의 Y성분이 양수(+Y)가 되도록 강제.
@@ -208,7 +208,7 @@ def keep_gripper_open_reward(env: ManagerBasedRLEnv, asset_name: str, place_hand
     gripper_width = torch.sum(gripper_pos, dim=-1)
     
     # 0.08에 가까울수록 1.0, 0.04에 가까울수록 0.0
-    is_open = torch.clamp((gripper_width - 0.04) / 0.04, min=0.0, max=1.0)
+    is_open = torch.clamp((gripper_width - 0.03) / 0.05, min=0.0, max=1.0)
     
     return is_far * is_open
 
@@ -293,10 +293,10 @@ def place_to_target(env: ManagerBasedRLEnv, asset_name: str, place_hand_regex: s
     sign_y = torch.sign(cube_z_dir[:, 1])
     grab_pos = obj_pos + (sign_y.unsqueeze(-1) * 0.08 * cube_z_dir)
     dist_to_grab = torch.norm(tcp_pos - grab_pos, dim=-1)
-    is_held = 1.0 - torch.clamp((dist_to_grab - 0.04) / 0.20, min=0.0, max=1.0)    
+    is_held = 1.0 - torch.clamp((dist_to_grab - 0.03) / 0.20, min=0.0, max=1.0)    
     gripper_idx = robot.find_joints("panda_finger_joint[1-2]$")[0]
     gripper_width = torch.sum(robot.data.joint_pos[:, gripper_idx], dim=-1)
-    is_closed = 1.0 - torch.clamp((gripper_width - 0.04) / 0.04, 0.0, 1.0)
+    is_closed = 1.0 - torch.clamp((gripper_width - 0.03) / 0.05, 0.0, 1.0)
     
     dist_to_target_2d = torch.norm(obj_pos[:, :2] - target.data.root_pos_w[:, :2], dim=-1)
     return torch.exp(-2.0 * dist_to_target_2d) * is_held * is_closed
@@ -342,7 +342,7 @@ def place_gripper_close(env: ManagerBasedRLEnv, asset_name: str, place_hand_rege
     obj_pos = obj.data.root_pos_w
     
     # [수정] 0.1m 이상 띄워야만 판정하는 것은 가혹함. lift_amt로 점진적 적용.
-    lift_amt = torch.clamp((obj_pos[:, 2] - 0.022) / 0.078, min=0.0, max=1.0)
+    lift_amt = torch.clamp((obj_pos[:, 2] - 0.017) / 0.078, min=0.0, max=1.0)
     
     wrist_idx = robot.find_bodies(place_hand_regex)[0]
     wrist_pos = robot.data.body_pos_w[:, wrist_idx[0]]
@@ -371,7 +371,7 @@ def place_gripper_close(env: ManagerBasedRLEnv, asset_name: str, place_hand_rege
     is_engulfing = torch.clamp((0.03 - dist_to_grab) / 0.03, min=0.0, max=1.0)
     
     # 그리퍼 닫힘 조건: 4cm 이하로 닫히면 만점
-    is_closed = torch.clamp((0.08 - gripper_width) / 0.04, min=0.0, max=1.0)
+    is_closed = torch.clamp((0.08 - gripper_width) / 0.05, min=0.0, max=1.0)
     
     return lift_amt * is_engulfing * is_closed
 
@@ -401,13 +401,13 @@ def pick_release(env: ManagerBasedRLEnv, asset_name: str, pick_hand_regex: str, 
     grab_pos = obj_pos + (sign_y.unsqueeze(-1) * 0.08 * cube_z_dir)
     
     dist_to_grab = torch.norm(tcp_pos_l - grab_pos, dim=-1)
-    place_is_held = 1.0 - torch.clamp((dist_to_grab - 0.04) / 0.20, min=0.0, max=1.0)
+    place_is_held = 1.0 - torch.clamp((dist_to_grab - 0.03) / 0.20, min=0.0, max=1.0)
     
     gripper_idx_l = robot.find_joints("panda_finger_joint[1-2]$")[0]
     place_gripper_width = torch.sum(robot.data.joint_pos[:, gripper_idx_l], dim=-1)
     
     # [수정] 왼팔이 닫힌 정도를 연속적인 비율로 계산 (0.08에서 0.04로 갈수록 1.0)
-    place_is_closed = 1.0 - torch.clamp((place_gripper_width - 0.04) / 0.04, 0.0, 1.0)
+    place_is_closed = 1.0 - torch.clamp((place_gripper_width - 0.03) / 0.05, 0.0, 1.0)
     left_secured = place_is_held * place_is_closed
     
     # Right Arm Release Check
@@ -415,7 +415,7 @@ def pick_release(env: ManagerBasedRLEnv, asset_name: str, pick_hand_regex: str, 
     pick_gripper_width = torch.sum(robot.data.joint_pos[:, gripper_idx_r], dim=-1)
     
     # [수정] 오른팔이 놓아주는 것도 연속적인 보상으로 변경 (0.04에서 0.08로 벌릴수록 1.0)
-    pick_is_released = torch.clamp((pick_gripper_width - 0.04) / 0.04, 0.0, 1.0)
+    pick_is_released = torch.clamp((pick_gripper_width - 0.03) / 0.05, 0.0, 1.0)
     
     # [수정] 물체가 바닥에 있을 때 왼팔이 다가가서 잡고 보상을 훔치는(Farm) 꼼수를 막기 위해,
     # 핸드오버는 반드시 허공(Z > 10cm)에서 이루어져야만 보상을 주도록 lift_amt를 곱합니다.
@@ -482,7 +482,7 @@ def gripper_close_reward(env: ManagerBasedRLEnv, asset_name: str, pick_hand_rege
     is_engulfing = torch.clamp((0.03 - dist) / 0.03, 0.0, 1.0)
     
     # 2. 그리퍼 닫힘 조건: 4cm 이하로 닫히면 만점
-    is_closed = torch.clamp((0.08 - gripper_width) / 0.04, 0.0, 1.0)
+    is_closed = torch.clamp((0.08 - gripper_width) / 0.05, 0.0, 1.0)
     
     # [수정] pose_alignment를 곱셈에서 분리하거나 제거합니다. 
     # 자세가 완벽하지 않더라도 쥐는 행위 자체에 보상을 주어 물체를 잡는 시도를 늘립니다.
@@ -565,7 +565,7 @@ def pick_grasp_pose_reward(env: ManagerBasedRLEnv, asset_name: str, pick_hand_re
     grab_pos = obj_pos - (sign_y.unsqueeze(-1) * 0.08 * cube_z_dir)
     
     dist = torch.norm(tcp_pos - grab_pos, dim=-1)
-    is_near_arm = 1.0 - torch.clamp((dist - 0.04) / 0.20, min=0.0, max=1.0)
+    is_near_arm = 1.0 - torch.clamp((dist - 0.03) / 0.20, min=0.0, max=1.0)
     
     pose_reward = vertical_alignment * finger_alignment
     
@@ -622,7 +622,7 @@ def premature_gripper_close_penalty(env: ManagerBasedRLEnv, asset_name: str, pic
     
     # [수정] 4cm 이하면 처벌하는 흑백 논리(Boolean)를 버리고, 연속적(Continuous)으로 처벌합니다.
     # 8cm(완전 개방)일 때는 페널티 0, 손을 오므릴수록 페널티가 증가하여 4cm 이하일 때 최대 페널티를 받게 됩니다.
-    is_closing = torch.clamp((0.08 - gripper_width) / 0.04, min=0.0, max=1.0)
+    is_closing = torch.clamp((0.08 - gripper_width) / 0.05, min=0.0, max=1.0)
     
     # 허공에서 손을 조금이라도 오므리면 그에 비례해서 강력한 감점 부과
     return not_engulfing * is_closing
