@@ -194,7 +194,7 @@ class RewardsCfg:
     action_penalty = RewTerm(func=mdp.action_l2, weight=-0.01)
     
     # 그리퍼나 팔이 덜덜 떠는 현상(Shivering/Oscillation)을 방지하기 위한 페널티
-    action_rate_penalty = RewTerm(func=mdp.action_rate_l2, weight=-0.5) # [수정] 양팔이 맞부딪히며 덜덜 떠는(Shaking) 현상을 억제하기 위해 페널티 대폭 강화
+    action_rate_penalty = RewTerm(func=mdp.action_rate_l2, weight=-0.05)
     
     # 1. 오른쪽 팔이 초록색 물체(Object)에 다가갈수록 보상 부여 (Pick 시작)
     pick_reach = RewTerm(

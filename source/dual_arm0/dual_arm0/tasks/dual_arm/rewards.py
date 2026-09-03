@@ -156,7 +156,7 @@ def handover_zone_approach(env: ManagerBasedRLEnv, asset_name: str, pick_hand_re
     # [수정] 왼팔이 쥐었는지(left_secured) 엄격하게 판정
     gripper_idx_l = robot.find_joints("panda_finger_joint[1-2]$")[0]
     place_gripper_width = torch.sum(robot.data.joint_pos[:, gripper_idx_l], dim=-1)
-    place_is_held_strict = (dist_to_tcp_l < 0.04).float()
+    place_is_held_strict = (dist_to_tcp_l < 0.03).float()
     place_is_closed_strict = (place_gripper_width < 0.04).float()
     left_secured = place_is_held_strict * place_is_closed_strict
     
@@ -274,7 +274,7 @@ def place_reach_object(env: ManagerBasedRLEnv, asset_name: str, place_hand_regex
     place_gripper_width = torch.sum(robot.data.joint_pos[:, gripper_idx_l], dim=-1)
     
     dist_to_grab_l = torch.norm(tcp_pos - grab_pos, dim=-1)
-    place_is_held_strict = (dist_to_grab_l < 0.04).float()
+    place_is_held_strict = (dist_to_grab_l < 0.03).float()
     place_is_closed_strict = (place_gripper_width < 0.04).float()
     left_secured = place_is_held_strict * place_is_closed_strict
     
@@ -317,7 +317,7 @@ def place_to_target(env: ManagerBasedRLEnv, asset_name: str, place_hand_regex: s
     gripper_width = torch.sum(robot.data.joint_pos[:, gripper_idx], dim=-1)
     
     # [수정 1] 엄격한 Boolean 판정 (텔레파시 방지)
-    is_held_strict = (dist_to_grab < 0.04).float()
+    is_held_strict = (dist_to_grab < 0.03).float()
     is_closed_strict = (gripper_width < 0.04).float()
     left_secured = is_held_strict * is_closed_strict
     
@@ -439,7 +439,7 @@ def pick_release(env: ManagerBasedRLEnv, asset_name: str, pick_hand_regex: str, 
     
     # [수정] 왼팔이 '완벽하게' 3cm 이내로 진입해서 쥐었을 때만 발동하도록 엄격한 Boolean으로 변경 
     # (연속값이면 밖에서 미리 닫고 벌점 50점 받으면서 여기서 300점을 타먹는 어뷰징 발생)
-    place_is_held_strict = (dist_to_grab < 0.04).float()
+    place_is_held_strict = (dist_to_grab < 0.03).float()
     place_is_closed_strict = (place_gripper_width < 0.04).float() # 두께가 3cm이므로 4cm 이하면 잡은 것으로 간주
     left_secured = place_is_held_strict * place_is_closed_strict
     
