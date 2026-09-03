@@ -43,10 +43,8 @@ class DualArmSceneCfg(InteractiveSceneCfg):
         prim_path="{ENV_REGEX_NS}/Object", # 물체가 생성될 경로
         # 누워있는 상태: Y축 기준 90도 회전 (w=0.7071, y=0.7071), 중심 높이는 두께(0.04)의 절반인 0.02
         init_state=RigidObjectCfg.InitialStateCfg(pos=(0.5, 0.0, 0.02), rot=(0.7071, 0.0, 0.7071, 0.0)), 
-        spawn=sim_utils.CylinderCfg(
-            radius=0.02,
-            height=0.25,
-            axis="Z", # 지름 4cm, 길이 25cm의 원통형 릴레이 바통
+        spawn=sim_utils.CuboidCfg(
+            size=(0.04, 0.04, 0.25), # 가로 4cm, 세로 4cm, 길이 25cm의 직육면체 바통
             rigid_props=sim_utils.RigidBodyPropertiesCfg(), # 강체 물리 속성 활성화
             mass_props=sim_utils.MassPropertiesCfg(mass=0.2), # [수정] 1.0kg은 너무 무거워서 들고 이동할 때 놓침. 0.2kg으로 경량화.
             collision_props=sim_utils.CollisionPropertiesCfg(), # 충돌 속성 활성화
