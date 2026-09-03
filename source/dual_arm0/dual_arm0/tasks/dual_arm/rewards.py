@@ -145,8 +145,17 @@ def handover_zone_approach(env: ManagerBasedRLEnv, asset_name: str, pick_hand_re
     # pick_lift와 동일하게 0.022m부터 점진적으로 점수를 주도록 완화 (lift_amt 적용)
     lift_amt = torch.clamp((obj_pos[:, 2] - 0.022) / 0.078, min=0.0, max=1.0)
     
+    # [수정] 오른팔이 바통을 잡고 있을 때, 많이 남은 쪽(긴 부분)이 왼팔 방향(+Y)을 향하도록 유도
+    # 손끝(tcp_pos)에서 바통 중심(obj_pos)으로 향하는 벡터의 Y성분이 양수(+Y)가 되도록 강제.
+    vec_to_center = obj_pos - tcp_pos
+    vec_norm = torch.norm(vec_to_center, dim=-1, keepdim=True) + 1e-6
+    dir_y = (vec_to_center / vec_norm)[:, 1] # -1.0 ~ 1.0
+    
+    # 방향이 왼팔 쪽(+Y)을 향하면 만점(1.0), 반대쪽(-Y)을 향하면 0.0으로 깎음
+    pointing_bonus = torch.clamp((dir_y + 1.0) / 2.0, min=0.0, max=1.0)
+    
     # 오른팔이 그리퍼를 열어도 왼팔이 잡고 있으면 is_held_by_any가 유지되어 점수가 깎이지 않음!
-    return torch.exp(-2.0 * dist) * lift_amt * is_held_by_any
+    return torch.exp(-2.0 * dist) * lift_amt * is_held_by_any * pointing_bonus
 
 def place_reach_object(env: ManagerBasedRLEnv, asset_name: str, place_hand_regex: str, object_name: str, handover_pos: list) -> torch.Tensor:
     """물체가 핸드오버 구역 내에 있을 때만, 내려놓는 팔(Place Arm) 그리퍼가 물체에 가까워질수록 보상을 줍니다."""
