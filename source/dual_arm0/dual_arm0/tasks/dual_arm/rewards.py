@@ -293,13 +293,24 @@ def place_to_target(env: ManagerBasedRLEnv, asset_name: str, place_hand_regex: s
     sign_y = torch.sign(cube_z_dir[:, 1])
     grab_pos = obj_pos + (sign_y.unsqueeze(-1) * 0.08 * cube_z_dir)
     dist_to_grab = torch.norm(tcp_pos - grab_pos, dim=-1)
-    is_held = 1.0 - torch.clamp((dist_to_grab - 0.03) / 0.20, min=0.0, max=1.0)    
+    
     gripper_idx = robot.find_joints("panda_finger_joint[1-2]$")[0]
     gripper_width = torch.sum(robot.data.joint_pos[:, gripper_idx], dim=-1)
-    is_closed = 1.0 - torch.clamp((gripper_width - 0.03) / 0.05, 0.0, 1.0)
     
-    dist_to_target_2d = torch.norm(obj_pos[:, :2] - target.data.root_pos_w[:, :2], dim=-1)
-    return torch.exp(-2.0 * dist_to_target_2d) * is_held * is_closed
+    # [수정 1] 엄격한 Boolean 판정 (텔레파시 방지)
+    is_held_strict = (dist_to_grab < 0.03).float()
+    is_closed_strict = (gripper_width < 0.04).float()
+    left_secured = is_held_strict * is_closed_strict
+    
+    # [수정 2] 오른팔이 완벽하게 놔주었는지 확인 (양팔이 같이 끌고 가는 꼼수 방지)
+    gripper_idx_r = robot.find_joints("panda_finger_joint[1-2]_0")[0]
+    pick_gripper_width = torch.sum(robot.data.joint_pos[:, gripper_idx_r], dim=-1)
+    pick_is_released = (pick_gripper_width > 0.07).float() # 거의 다 폈을 때만 인정
+    
+    # [수정 3] Z축(높이)을 포함한 완벽한 3D 거리 계산 (허공에서 높은 점수 갈취 방지)
+    dist_to_target_3d = torch.norm(obj_pos - target.data.root_pos_w, dim=-1)
+    
+    return torch.exp(-2.0 * dist_to_target_3d) * left_secured * pick_is_released
 
 def place_object(env: ManagerBasedRLEnv, asset_name: str, place_hand_regex: str, pick_hand_regex: str, object_name: str, target_name: str) -> torch.Tensor:
     """큐브가 타겟에 안착했고, 양팔 모두 큐브를 쿨하게 놓아주고 물러났을 때 주는 최종 잭팟 보상."""
