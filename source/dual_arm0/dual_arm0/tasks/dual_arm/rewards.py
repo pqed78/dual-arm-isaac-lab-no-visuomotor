@@ -54,9 +54,35 @@ def pick_reach_object(env: ManagerBasedRLEnv, asset_name: str, pick_hand_regex: 
     # TCP와 목표 잡기 위치 사이의 거리를 계산합니다.
     dist = torch.norm(tcp_pos - grab_pos, dim=-1)
     
+    # [수정] 왼팔이 바통을 넘겨받았다면, 오른팔은 떨어져야 합니다!
+    # 왼팔 상태 확인
+    wrist_idx_l = robot.find_bodies("panda_hand$")[0]
+    wrist_pos_l = robot.data.body_pos_w[:, wrist_idx_l[0]]
+    wrist_quat_l = robot.data.body_quat_w[:, wrist_idx_l[0]]
+    w_l, x_l, y_l, z_l = wrist_quat_l[:, 0], wrist_quat_l[:, 1], wrist_quat_l[:, 2], wrist_quat_l[:, 3]
+    z_dir_l = torch.stack([2.0*(x_l*z_l + w_l*y_l), 2.0*(y_l*z_l - w_l*x_l), 1.0 - 2.0*(x_l*x_l + y_l*y_l)], dim=-1)
+    tcp_pos_l = wrist_pos_l + 0.1034 * z_dir_l
+    
+    grab_pos_l = obj_pos + (sign_y.unsqueeze(-1) * 0.08 * cube_z_dir)
+    dist_to_grab_l = torch.norm(tcp_pos_l - grab_pos_l, dim=-1)
+    
+    place_is_held = 1.0 - torch.clamp((dist_to_grab_l - 0.03) / 0.20, min=0.0, max=1.0)
+    
+    gripper_idx_l = robot.find_joints("panda_finger_joint[1-2]$")[0]
+    place_gripper_width = torch.sum(robot.data.joint_pos[:, gripper_idx_l], dim=-1)
+    place_is_closed = 1.0 - torch.clamp((place_gripper_width - 0.03) / 0.05, 0.0, 1.0)
+    
+    left_secured = place_is_held * place_is_closed
+    
     # 거리가 가까워질수록 1에 수렴하는 연속적인 보상
     # exp(-10*dist)를 사용하여 멀리서부터 부드럽게 이끌어줍니다.
-    return torch.exp(-10.0 * dist)
+    reach_reward = torch.exp(-10.0 * dist)
+    
+    # [수정] 왼팔이 넘겨받았으면(left_secured > 0.5), 오른팔은 30cm 이상 물러나야 보상을 줍니다!
+    retreat_reward = torch.clamp((dist - 0.10) / 0.20, min=0.0, max=1.0) # 10cm부터 시작해서 30cm 멀어지면 만점
+    
+    # 왼팔이 안 잡았으면 다가가고(reach_reward), 잡았으면 도망갑니다(retreat_reward)
+    return reach_reward * (1.0 - left_secured) + retreat_reward * left_secured
 
 def object_lifted_by_pick_arm(env: ManagerBasedRLEnv, asset_name: str, pick_hand_regex: str, object_name: str) -> torch.Tensor:
     """잡는 팔(Pick Arm) 부근에서 물체가 바닥으로부터 일정 높이 이상 들려 올려졌을 때 보상을 줍니다."""
