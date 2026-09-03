@@ -327,8 +327,17 @@ def pick_release(env: ManagerBasedRLEnv, asset_name: str, pick_hand_regex: str, 
     z_dir_l = torch.stack([2.0 * (x * z + w * y), 2.0 * (y * z - w * x), 1.0 - 2.0 * (x * x + y * y)], dim=-1)
     tcp_pos_l = wrist_pos_l + 0.1034 * z_dir_l
     # 왼팔이 큐브 끝부분(grab_pos)을 잡았다는 조건을 거리 기반으로 부드럽게 평가
-    grab_pos = obj_pos.clone()
-    grab_pos[:, 0] -= 0.04
+    obj_quat = obj.data.root_quat_w
+    ow, ox, oy, oz = obj_quat[:, 0], obj_quat[:, 1], obj_quat[:, 2], obj_quat[:, 3]
+    cube_z_x = 2.0 * (ox * oz + ow * oy)
+    cube_z_y = 2.0 * (oy * oz - ow * ox)
+    cube_z_z = 1.0 - 2.0 * (ox * ox + oy * oy)
+    cube_z_dir = torch.stack([cube_z_x, cube_z_y, cube_z_z], dim=-1)
+    
+    sign_y = torch.sign(cube_z_dir[:, 1])
+    # 왼팔은 +Y 끄트머리를 잡음
+    grab_pos = obj_pos + (sign_y.unsqueeze(-1) * 0.08 * cube_z_dir)
+    
     dist_to_grab = torch.norm(tcp_pos_l - grab_pos, dim=-1)
     place_is_held = 1.0 - torch.clamp((dist_to_grab - 0.04) / 0.20, min=0.0, max=1.0)
     
