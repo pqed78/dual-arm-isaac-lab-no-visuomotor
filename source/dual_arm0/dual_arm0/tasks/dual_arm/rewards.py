@@ -152,24 +152,32 @@ def handover_zone_approach(env: ManagerBasedRLEnv, asset_name: str, pick_hand_re
     tcp_pos_l = wrist_pos_l + 0.1034 * z_dir_l
     
     dist_to_tcp_l = torch.norm(tcp_pos_l - grab_pos_l, dim=-1)
-    is_held_by_left = 1.0 - torch.clamp((dist_to_tcp_l - 0.03) / 0.20, min=0.0, max=1.0)
     
-    is_held_by_any = torch.clamp(is_held_by_right + is_held_by_left, max=1.0)
+    # [수정] 왼팔이 쥐었는지(left_secured) 엄격하게 판정
+    gripper_idx_l = robot.find_joints("panda_finger_joint[1-2]$")[0]
+    place_gripper_width = torch.sum(robot.data.joint_pos[:, gripper_idx_l], dim=-1)
+    place_is_held_strict = (dist_to_tcp_l < 0.03).float()
+    place_is_closed_strict = (place_gripper_width < 0.04).float()
+    left_secured = place_is_held_strict * place_is_closed_strict
     
-    # pick_lift와 동일하게 0.017m부터 점진적으로 점수를 주도록 완화 (lift_amt 적용)
-    lift_amt = torch.clamp((obj_pos[:, 2] - 0.017) / 0.078, min=0.0, max=1.0)
+    # 오른팔이나 왼팔 중 하나라도 근처에 있는지 (연속값)
+    is_held_by_left_soft = 1.0 - torch.clamp((dist_to_tcp_l - 0.03) / 0.20, min=0.0, max=1.0)
+    is_held_by_any = torch.clamp(is_held_by_right + is_held_by_left_soft, max=1.0)
+    
+    # pick_lift와 동일하게 0.017m부터 점진적으로 점수를 주도록 완화
+    base_lift = torch.clamp((obj_pos[:, 2] - 0.017) / 0.078, min=0.0, max=1.0)
     
     # [수정] 오른팔이 바통을 잡고 있을 때, 많이 남은 쪽(긴 부분)이 왼팔 방향(+Y)을 향하도록 유도
-    # 손끝(tcp_pos)에서 바통 중심(obj_pos)으로 향하는 벡터의 Y성분이 양수(+Y)가 되도록 강제.
     vec_to_center = obj_pos - tcp_pos
     vec_norm = torch.norm(vec_to_center, dim=-1, keepdim=True) + 1e-6
-    dir_y = (vec_to_center / vec_norm)[:, 1] # -1.0 ~ 1.0
-    
-    # 방향이 왼팔 쪽(+Y)을 향하면 만점(1.0), 반대쪽(-Y)을 향하면 0.0으로 깎음
+    dir_y = (vec_to_center / vec_norm)[:, 1]
     pointing_bonus = torch.clamp((dir_y + 1.0) / 2.0, min=0.0, max=1.0)
     
-    # 오른팔이 그리퍼를 열어도 왼팔이 잡고 있으면 is_held_by_any가 유지되어 점수가 깎이지 않음!
-    return torch.exp(-2.0 * dist) * lift_amt * is_held_by_any * pointing_bonus
+    # [수정] 왼팔이 바통을 완벽히 건네받고(left_secured) 바닥으로 배달을 갈 때, 
+    # 허공(Handover Zone)에서 멀어지고 고도가 낮아지면서 점수가 증발(Reward Cliff)하는 것을 방지.
+    # 왼팔이 쥐었으면 무조건 만점(1.0)으로 면제(Waive) 해줌.
+    base_approach = torch.exp(-2.0 * dist) * base_lift * is_held_by_any * pointing_bonus
+    return torch.clamp(base_approach + left_secured, max=1.0)
 
 def keep_gripper_open_reward(env: ManagerBasedRLEnv, asset_name: str, place_hand_regex: str, object_name: str, gripper_joint_regex: str) -> torch.Tensor:
     """왼팔이 바통과 멀리 떨어져 있을 때(대기 중일 때) 손을 활짝 펴고 있으면 긍정적인 점수를 줍니다."""
@@ -332,7 +340,7 @@ def place_object(env: ManagerBasedRLEnv, asset_name: str, place_hand_regex: str,
     # Target 조건
     obj_pos = obj.data.root_pos_w
     target_pos = target.data.root_pos_w
-    is_on_target = torch.norm(obj_pos[:, :2] - target_pos[:, :2], dim=-1) < 0.05
+    is_on_target = torch.norm(obj_pos[:, :2] - target_pos[:, :2], dim=-1) < 0.15 # 25cm 바통이 쓰러졌을 때 중심이 밀리는 것을 감안하여 타겟 반경을 15cm로 넉넉하게 확대
     
     # Left Arm (Place Arm) 조건: 손을 열고 물러났는지 확인
     wrist_idx_l = robot.find_bodies(place_hand_regex)[0]
