@@ -171,6 +171,47 @@ def handover_zone_approach(env: ManagerBasedRLEnv, asset_name: str, pick_hand_re
     # 오른팔이 그리퍼를 열어도 왼팔이 잡고 있으면 is_held_by_any가 유지되어 점수가 깎이지 않음!
     return torch.exp(-2.0 * dist) * lift_amt * is_held_by_any * pointing_bonus
 
+def keep_gripper_open_reward(env: ManagerBasedRLEnv, asset_name: str, place_hand_regex: str, object_name: str, gripper_joint_regex: str) -> torch.Tensor:
+    """왼팔이 바통과 멀리 떨어져 있을 때(대기 중일 때) 손을 활짝 펴고 있으면 긍정적인 점수를 줍니다."""
+    robot = env.scene[asset_name]
+    obj = env.scene[object_name]
+    
+    # TCP
+    wrist_idx = robot.find_bodies(place_hand_regex)[0]
+    wrist_pos = robot.data.body_pos_w[:, wrist_idx[0]]
+    wrist_quat = robot.data.body_quat_w[:, wrist_idx[0]]
+    w, x, y, z = wrist_quat[:, 0], wrist_quat[:, 1], wrist_quat[:, 2], wrist_quat[:, 3]
+    z_dir = torch.stack([2.0*(x*z+w*y), 2.0*(y*z-w*x), 1.0-2.0*(x*x+y*y)], dim=-1)
+    tcp_pos = wrist_pos + 0.1034 * z_dir
+    
+    # 타겟
+    obj_pos = obj.data.root_pos_w
+    obj_quat = obj.data.root_quat_w
+    ow, ox, oy, oz = obj_quat[:, 0], obj_quat[:, 1], obj_quat[:, 2], obj_quat[:, 3]
+    cube_z = torch.stack([2.0*(ox*oz+ow*oy), 2.0*(oy*oz-ow*ox), 1.0-2.0*(ox*ox+oy*oy)], dim=-1)
+    
+    is_left = "$" in place_hand_regex
+    sign_y = torch.sign(cube_z[:, 1])
+    if is_left:
+        grab_pos = obj_pos + (sign_y.unsqueeze(-1) * 0.08 * cube_z)
+    else:
+        grab_pos = obj_pos - (sign_y.unsqueeze(-1) * 0.08 * cube_z)
+        
+    dist = torch.norm(tcp_pos - grab_pos, dim=-1)
+    
+    # 6cm 밖인지 확인
+    is_far = (dist > 0.06).float()
+    
+    # 그리퍼 너비
+    gripper_idx, _ = robot.find_joints(gripper_joint_regex)
+    gripper_pos = robot.data.joint_pos[:, gripper_idx]
+    gripper_width = torch.sum(gripper_pos, dim=-1)
+    
+    # 0.08에 가까울수록 1.0, 0.04에 가까울수록 0.0
+    is_open = torch.clamp((gripper_width - 0.04) / 0.04, min=0.0, max=1.0)
+    
+    return is_far * is_open
+
 def place_reach_object(env: ManagerBasedRLEnv, asset_name: str, place_hand_regex: str, object_name: str, handover_pos: list) -> torch.Tensor:
     """물체가 핸드오버 구역 내에 있을 때만, 내려놓는 팔(Place Arm) 그리퍼가 물체에 가까워질수록 보상을 줍니다."""
     robot = env.scene[asset_name]

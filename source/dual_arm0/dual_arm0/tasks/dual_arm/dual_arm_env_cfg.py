@@ -261,6 +261,18 @@ class RewardsCfg:
         },
     )
     
+    # [추가] 왼팔이 대기 중에 손을 쫙 펴고 있으면 달콤한 칭찬(보상)을 줌
+    place_keep_open = RewTerm(
+        func=rewards.keep_gripper_open_reward,
+        weight=20.0, 
+        params={
+            "asset_name": "robot",
+            "place_hand_regex": "panda_hand$",
+            "object_name": "object",
+            "gripper_joint_regex": "panda_finger_joint[1-2]$"
+        },
+    )
+    
     # 2. 오른쪽 팔이 물체를 바닥에서 들어 올리면 추가 보상 부여
     pick_lift = RewTerm(
         func=rewards.object_lifted_by_pick_arm,
