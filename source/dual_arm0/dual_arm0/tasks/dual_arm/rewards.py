@@ -126,7 +126,20 @@ def handover_zone_approach(env: ManagerBasedRLEnv, asset_name: str, pick_hand_re
     z_dir_z = 1.0 - 2.0 * (x * x + y * y)
     z_dir = torch.stack([z_dir_x, z_dir_y, z_dir_z], dim=-1)
     tcp_pos = wrist_pos + 0.1034 * z_dir
-    dist_to_tcp = torch.norm(tcp_pos - obj_pos, dim=-1)
+    
+    # 오른팔, 왼팔이 쥐어야 할 끄트머리 실시간 계산
+    obj_quat = obj.data.root_quat_w
+    ow, ox, oy, oz = obj_quat[:, 0], obj_quat[:, 1], obj_quat[:, 2], obj_quat[:, 3]
+    cube_z_x = 2.0 * (ox * oz + ow * oy)
+    cube_z_y = 2.0 * (oy * oz - ow * ox)
+    cube_z_z = 1.0 - 2.0 * (ox * ox + oy * oy)
+    cube_z_dir = torch.stack([cube_z_x, cube_z_y, cube_z_z], dim=-1)
+    
+    sign_y = torch.sign(cube_z_dir[:, 1])
+    grab_pos_r = obj_pos - (sign_y.unsqueeze(-1) * 0.08 * cube_z_dir)
+    grab_pos_l = obj_pos + (sign_y.unsqueeze(-1) * 0.08 * cube_z_dir)
+    
+    dist_to_tcp = torch.norm(tcp_pos - grab_pos_r, dim=-1)
     is_held_by_right = 1.0 - torch.clamp((dist_to_tcp - 0.04) / 0.20, min=0.0, max=1.0)
     
     # 왼팔(Place Arm)이 잡고 있는지 확인 (오른팔이 놓고 물러나도 보상이 유지되게 하기 위함)
@@ -137,7 +150,8 @@ def handover_zone_approach(env: ManagerBasedRLEnv, asset_name: str, pick_hand_re
     w_l, x_l, y_l, z_l = wrist_quat_l[:, 0], wrist_quat_l[:, 1], wrist_quat_l[:, 2], wrist_quat_l[:, 3]
     z_dir_l = torch.stack([2.0 * (x_l * z_l + w_l * y_l), 2.0 * (y_l * z_l - w_l * x_l), 1.0 - 2.0 * (x_l * x_l + y_l * y_l)], dim=-1)
     tcp_pos_l = wrist_pos_l + 0.1034 * z_dir_l
-    dist_to_tcp_l = torch.norm(tcp_pos_l - obj_pos, dim=-1)
+    
+    dist_to_tcp_l = torch.norm(tcp_pos_l - grab_pos_l, dim=-1)
     is_held_by_left = 1.0 - torch.clamp((dist_to_tcp_l - 0.04) / 0.20, min=0.0, max=1.0)
     
     is_held_by_any = torch.clamp(is_held_by_right + is_held_by_left, max=1.0)
@@ -228,8 +242,15 @@ def place_to_target(env: ManagerBasedRLEnv, asset_name: str, place_hand_regex: s
     obj_pos = obj.data.root_pos_w
     dist_to_tcp = torch.norm(tcp_pos - obj_pos, dim=-1)
     # 왼팔이 큐브 끝부분을 잡고 있는 상태인지 평가
-    grab_pos = obj_pos.clone()
-    grab_pos[:, 0] -= 0.04
+    obj_quat = obj.data.root_quat_w
+    ow, ox, oy, oz = obj_quat[:, 0], obj_quat[:, 1], obj_quat[:, 2], obj_quat[:, 3]
+    cube_z_x = 2.0 * (ox * oz + ow * oy)
+    cube_z_y = 2.0 * (oy * oz - ow * ox)
+    cube_z_z = 1.0 - 2.0 * (ox * ox + oy * oy)
+    cube_z_dir = torch.stack([cube_z_x, cube_z_y, cube_z_z], dim=-1)
+    
+    sign_y = torch.sign(cube_z_dir[:, 1])
+    grab_pos = obj_pos + (sign_y.unsqueeze(-1) * 0.08 * cube_z_dir)
     dist_to_grab = torch.norm(tcp_pos - grab_pos, dim=-1)
     is_held = 1.0 - torch.clamp((dist_to_grab - 0.04) / 0.20, min=0.0, max=1.0)    
     gripper_idx = robot.find_joints("panda_finger_joint[1-2]$")[0]
