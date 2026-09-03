@@ -103,7 +103,27 @@ def object_lifted_by_pick_arm(env: ManagerBasedRLEnv, asset_name: str, pick_hand
     # 누워있는 상태(높이 0.02m)에서 시작하므로, 아주 미세하게라도(0.017m) 위로 들리면 점수를 주기 시작합니다.
     lift_amt = torch.clamp((obj_pos[:, 2] - 0.017) / 0.078, min=0.0, max=1.0)
     
-    return lift_amt * is_near_arm * is_closed
+    # [수정] 왼팔이 바통을 넘겨받았을 때, 오른팔이 손을 놓더라도(is_closed=0) 점수(100점)가 깎이지 않게 보장하는 면제권 부여
+    wrist_idx_l = robot.find_bodies("panda_hand$")[0]
+    wrist_pos_l = robot.data.body_pos_w[:, wrist_idx_l[0]]
+    wrist_quat_l = robot.data.body_quat_w[:, wrist_idx_l[0]]
+    w_l, x_l, y_l, z_l = wrist_quat_l[:, 0], wrist_quat_l[:, 1], wrist_quat_l[:, 2], wrist_quat_l[:, 3]
+    z_dir_l = torch.stack([2.0 * (x_l * z_l + w_l * y_l), 2.0 * (y_l * z_l - w_l * x_l), 1.0 - 2.0 * (x_l * x_l + y_l * y_l)], dim=-1)
+    tcp_pos_l = wrist_pos_l + 0.1034 * z_dir_l
+    
+    grab_pos_l = obj_pos + (sign_y.unsqueeze(-1) * 0.08 * cube_z_dir)
+    dist_to_grab_l = torch.norm(tcp_pos_l - grab_pos_l, dim=-1)
+    
+    gripper_idx_l = robot.find_joints("panda_finger_joint[1-2]$")[0]
+    place_gripper_width = torch.sum(robot.data.joint_pos[:, gripper_idx_l], dim=-1)
+    
+    # 왼팔이 잡았다는 것을 부드럽게 평가 (오른팔이 놓는 순간 바통이 1mm 밀렸다고 점수가 0으로 추락하며 떠는 현상 방지)
+    left_held_soft = (1.0 - torch.clamp((dist_to_grab_l - 0.03) / 0.05, 0.0, 1.0)) *                      (1.0 - torch.clamp((place_gripper_width - 0.04) / 0.04, 0.0, 1.0))
+                     
+    is_closed_final = torch.clamp(is_closed + left_held_soft, max=1.0)
+    is_near_arm_final = torch.clamp(is_near_arm + left_held_soft, max=1.0)
+    
+    return lift_amt * is_near_arm_final * is_closed_final
 
 def handover_zone_approach(env: ManagerBasedRLEnv, asset_name: str, pick_hand_regex: str, object_name: str, handover_pos: list) -> torch.Tensor:
     """물체가 들어 올려진 상태에서 중앙 핸드오버(인계) 구역으로 다가갈수록 보상을 줍니다."""
