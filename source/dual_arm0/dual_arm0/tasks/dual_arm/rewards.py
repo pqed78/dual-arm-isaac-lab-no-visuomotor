@@ -451,14 +451,15 @@ def pick_release(env: ManagerBasedRLEnv, asset_name: str, pick_hand_regex: str, 
     grab_pos = obj_pos + (sign_y.unsqueeze(-1) * 0.08 * cube_z_dir)
     
     dist_to_grab = torch.norm(tcp_pos_l - grab_pos, dim=-1)
-    place_is_held = 1.0 - torch.clamp((dist_to_grab - 0.03) / 0.20, min=0.0, max=1.0)
     
     gripper_idx_l = robot.find_joints("panda_finger_joint[1-2]$")[0]
     place_gripper_width = torch.sum(robot.data.joint_pos[:, gripper_idx_l], dim=-1)
     
-    # [수정] 왼팔이 닫힌 정도를 연속적인 비율로 계산 (0.08에서 0.04로 갈수록 1.0)
-    place_is_closed = 1.0 - torch.clamp((place_gripper_width - 0.03) / 0.05, 0.0, 1.0)
-    left_secured = place_is_held * place_is_closed
+    # [수정] 왼팔이 '완벽하게' 3cm 이내로 진입해서 쥐었을 때만 발동하도록 엄격한 Boolean으로 변경 
+    # (연속값이면 밖에서 미리 닫고 벌점 50점 받으면서 여기서 300점을 타먹는 어뷰징 발생)
+    place_is_held_strict = (dist_to_grab < 0.03).float()
+    place_is_closed_strict = (place_gripper_width < 0.04).float() # 두께가 3cm이므로 4cm 이하면 잡은 것으로 간주
+    left_secured = place_is_held_strict * place_is_closed_strict
     
     # Right Arm Release Check
     gripper_idx_r = robot.find_joints("panda_finger_joint[1-2]_0")[0]
