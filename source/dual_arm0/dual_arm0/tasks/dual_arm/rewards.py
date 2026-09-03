@@ -298,8 +298,8 @@ def place_to_target(env: ManagerBasedRLEnv, asset_name: str, place_hand_regex: s
     gripper_width = torch.sum(robot.data.joint_pos[:, gripper_idx], dim=-1)
     is_closed = 1.0 - torch.clamp((gripper_width - 0.03) / 0.05, 0.0, 1.0)
     
-    dist_to_target_2d = torch.norm(obj_pos[:, :2] - target.data.root_pos_w[:, :2], dim=-1)
-    return torch.exp(-2.0 * dist_to_target_2d) * is_held * is_closed
+    dist_to_target = torch.norm(obj_pos - target.data.root_pos_w, dim=-1)
+    return torch.exp(-2.0 * dist_to_target) * is_held * is_closed
 
 def place_object(env: ManagerBasedRLEnv, asset_name: str, place_hand_regex: str, pick_hand_regex: str, object_name: str, target_name: str) -> torch.Tensor:
     """큐브가 타겟에 안착했고, 양팔 모두 큐브를 쿨하게 놓아주고 물러났을 때 주는 최종 잭팟 보상."""
@@ -310,7 +310,7 @@ def place_object(env: ManagerBasedRLEnv, asset_name: str, place_hand_regex: str,
     # Target 조건
     obj_pos = obj.data.root_pos_w
     target_pos = target.data.root_pos_w
-    is_on_target = torch.norm(obj_pos[:, :2] - target_pos[:, :2], dim=-1) < 0.05
+    is_on_target = torch.norm(obj_pos - target_pos, dim=-1) < 0.15
     
     # Left Arm (Place Arm) 조건: 손을 열고 물러났는지 확인
     wrist_idx_l = robot.find_bodies(place_hand_regex)[0]
