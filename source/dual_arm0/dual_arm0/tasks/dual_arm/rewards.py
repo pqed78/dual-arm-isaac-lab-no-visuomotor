@@ -398,7 +398,8 @@ def place_gripper_close(env: ManagerBasedRLEnv, asset_name: str, place_hand_rege
     gripper_width = torch.sum(robot.data.joint_pos[:, gripper_idx], dim=-1)
     
     # 포획(Engulfing) 조건: 6cm 이내면 오르기 시작, 4cm 반경 내면 만점 (오른팔과 동일하게 엄격한 기준 적용)
-    is_engulfing = torch.clamp((0.03 - dist_to_grab) / 0.03, min=0.0, max=1.0)
+    # [수정] 3cm는 너무 좁은 바늘구멍이라 보상을 찾지 못함. 5cm부터 쥐기 시작하도록 유도(학습 경사로 제공)하되, 오른팔의 양보(Strict Boolean)는 여전히 3cm에서만 작동하게 하여 물리적 추락 방지
+    is_engulfing = torch.clamp((0.05 - dist_to_grab) / 0.05, min=0.0, max=1.0)
     
     # 그리퍼 닫힘 조건: 4cm 이하로 닫히면 만점
     is_closed = torch.clamp((0.08 - gripper_width) / 0.05, min=0.0, max=1.0)
@@ -512,7 +513,7 @@ def gripper_close_reward(env: ManagerBasedRLEnv, asset_name: str, pick_hand_rege
 
     # 1. 포획(Engulfing) 조건: 거리를 조금 더 여유롭게 줍니다 (6cm 이내면 오르기 시작, 4cm 반경 내면 만점)
     # [수정] 지나치게 엄격한 높이 제한(is_below_top)을 제거하여, TCP가 큐브와 충분히 가까우면(dist < 0.06) 쥐는 것을 허용합니다.
-    is_engulfing = torch.clamp((0.03 - dist) / 0.03, 0.0, 1.0)
+    is_engulfing = torch.clamp((0.05 - dist) / 0.05, 0.0, 1.0)
     
     # 2. 그리퍼 닫힘 조건: 4cm 이하로 닫히면 만점
     is_closed = torch.clamp((0.08 - gripper_width) / 0.05, 0.0, 1.0)
@@ -650,8 +651,8 @@ def premature_gripper_close_penalty(env: ManagerBasedRLEnv, asset_name: str, pic
     gripper_pos = robot.data.joint_pos[:, gripper_idx]
     gripper_width = torch.sum(gripper_pos, dim=-1)
     
-    # 타겟(끄트머리)에서 6cm보다 멀면 미포획 상태로 간주
-    not_engulfing = (dist > 0.03).float()
+    # 타겟(끄트머리)에서 5cm보다 멀면 미포획 상태로 간주 (너무 빡빡하면 페널티가 무서워서 접근 자체를 거부함)
+    not_engulfing = (dist > 0.05).float()
     
     # [수정] 4cm 이하면 처벌하는 흑백 논리(Boolean)를 버리고, 연속적(Continuous)으로 처벌합니다.
     # 8cm(완전 개방)일 때는 페널티 0, 손을 오므릴수록 페널티가 증가하여 4cm 이하일 때 최대 페널티를 받게 됩니다.
