@@ -305,11 +305,11 @@ def place_gripper_close(env: ManagerBasedRLEnv, asset_name: str, place_hand_rege
     gripper_idx = robot.find_joints("panda_finger_joint[1-2]$")[0]
     gripper_width = torch.sum(robot.data.joint_pos[:, gripper_idx], dim=-1)
     
-    # [수정] 왼팔이 큐브 끝부분 반경 4cm 이내에 들어오면 1.0 (감점 없음), 이후 20cm에 걸쳐 서서히 깎임
-    is_engulfing = 1.0 - torch.clamp((dist_to_grab - 0.04) / 0.20, min=0.0, max=1.0)
+    # 포획(Engulfing) 조건: 6cm 이내면 오르기 시작, 4cm 반경 내면 만점 (오른팔과 동일하게 엄격한 기준 적용)
+    is_engulfing = torch.clamp((0.06 - dist_to_grab) / 0.02, min=0.0, max=1.0)
     
-    # [수정] 0.08m 이하일 때만 점수를 주면 역시 학습이 안 됨. 완전히 열린 상태(0.08)부터 닫을수록 점수 증가
-    is_closed = 1.0 - torch.clamp(gripper_width / 0.08, 0.0, 1.0)
+    # 그리퍼 닫힘 조건: 4cm 이하로 닫히면 만점
+    is_closed = torch.clamp((0.08 - gripper_width) / 0.04, min=0.0, max=1.0)
     
     return lift_amt * is_engulfing * is_closed
 
