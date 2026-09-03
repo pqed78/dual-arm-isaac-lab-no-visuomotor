@@ -530,9 +530,14 @@ def premature_gripper_close_penalty(env: ManagerBasedRLEnv, asset_name: str, pic
     cube_z_z = 1.0 - 2.0 * (ox * ox + oy * oy)
     cube_z_dir = torch.stack([cube_z_x, cube_z_y, cube_z_z], dim=-1)
     
-    # 오른팔 타겟: -Y 방향 8cm 끄트머리
     sign_y = torch.sign(cube_z_dir[:, 1])
-    grab_pos = obj_pos - (sign_y.unsqueeze(-1) * 0.08 * cube_z_dir)
+    
+    # 왼팔인지 오른팔인지 정규표현식으로 구분하여 타겟을 다르게 설정
+    is_left_arm = "$" in pick_hand_regex
+    if is_left_arm:
+        grab_pos = obj_pos + (sign_y.unsqueeze(-1) * 0.08 * cube_z_dir)
+    else:
+        grab_pos = obj_pos - (sign_y.unsqueeze(-1) * 0.08 * cube_z_dir)
     
     dist = torch.norm(tcp_pos - grab_pos, dim=-1)
     
