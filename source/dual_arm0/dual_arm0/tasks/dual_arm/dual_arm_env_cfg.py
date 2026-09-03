@@ -215,7 +215,7 @@ class RewardsCfg:
         }
     )
     
-    # 1-3. 바닥 충돌 방지 페널티 (TCP가 큐브 중심 높이의 절반 아래로 내려가지 못하도록)
+    # 1-3. 바닥 충돌 방지 페널티 (TCP가 0.0m 밑 진짜 바닥을 긁지 못하도록)
     tcp_floor_penalty = RewTerm(
         func=rewards.tcp_floor_collision_penalty,
         weight=-5.0,  # [수정] -20.0 -> -5.0 (바닥에 닿는 두려움을 줄임)
@@ -226,7 +226,7 @@ class RewardsCfg:
         }
     )
     
-    # 1-4. 완벽한 자세(Top-down & 짧은 축 정렬) 유도 보상
+    # 1-4. 오른팔 완벽한 자세(Top-down & 짧은 축 정렬) 유도 보상
     pick_grasp_pose = RewTerm(
         func=rewards.pick_grasp_pose_reward,
         weight=50.0, # [수정] 10.0 -> 50.0 (그립 방향을 맞추는 것이 필수적이므로 가중치를 높임)
@@ -287,14 +287,14 @@ class RewardsCfg:
         weight=100.0,
     )
     
-    # 4-1. 왼쪽 팔이 큐브를 측면에서 수평으로 예쁘게 잡도록 자세를 유도하는 보상
+    # 4-1. 왼쪽 팔이 바통의 끝(팁) 방향에서 수평으로 찔러넣듯 예쁘게 잡도록 자세를 유도하는 보상
     place_grasp_pose = RewTerm(
         func=rewards.place_grasp_pose_reward,
         params={"asset_name": "robot", "place_hand_regex": "panda_hand$", "object_name": "object", "handover_pos": HANDOVER_POS},
         weight=10.0,
     )
     
-    # 4-2. 왼쪽 팔이 큐브를 넘겨받기 위해 꽉 쥐었을 때 보상 부여 (Place Gripper Close)
+    # 4-2. 왼쪽 팔이 바통 끄트머리(6cm 반경 내)에 도달해 꽉 쥐었을 때 보상 부여 (Place Gripper Close)
     place_gripper_close = RewTerm(
         func=rewards.place_gripper_close,
         params={"asset_name": "robot", "place_hand_regex": "panda_hand$", "object_name": "object"},

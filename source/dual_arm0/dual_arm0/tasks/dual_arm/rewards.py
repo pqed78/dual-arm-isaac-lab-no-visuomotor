@@ -274,7 +274,7 @@ def place_object(env: ManagerBasedRLEnv, asset_name: str, place_hand_regex: str,
     return is_on_target.float() * is_released_l.float() * is_open_l.float() * is_released_r.float()
 
 def place_gripper_close(env: ManagerBasedRLEnv, asset_name: str, place_hand_regex: str, object_name: str) -> torch.Tensor:
-    """물체가 허공에 떠 있을 때, 왼쪽 팔(Place Arm)이 큐브 근처에서 주먹을 쥐면 보상."""
+    """물체가 허공에 떠 있을 때, 왼쪽 팔(Place Arm)이 지정된 끄트머리(6cm 반경 내)에 도달해 주먹을 쥐면 보상."""
     robot = env.scene[asset_name]
     obj = env.scene[object_name]
     obj_pos = obj.data.root_pos_w
@@ -418,7 +418,7 @@ def gripper_close_reward(env: ManagerBasedRLEnv, asset_name: str, pick_hand_rege
     return is_engulfing * is_closed
 
 def tcp_floor_collision_penalty(env: ManagerBasedRLEnv, asset_name: str, pick_hand_regex: str, object_name: str) -> torch.Tensor:
-    """TCP(그리퍼 끝)가 바닥에 부딪히는 것을 방지하기 위해 물체 기본 높이의 1/2 밑으로 내려가면 페널티를 부과합니다."""
+    """TCP(그리퍼 끝)가 바닥(0.0m)을 뚫고 내려가 부딪히는 것을 방지하는 페널티입니다."""
     robot = env.scene[asset_name]
     obj = env.scene[object_name]
     
@@ -506,7 +506,7 @@ def pick_grasp_pose_reward(env: ManagerBasedRLEnv, asset_name: str, pick_hand_re
     return relaxed_pose_reward * is_near_arm
 
 def premature_gripper_close_penalty(env: ManagerBasedRLEnv, asset_name: str, pick_hand_regex: str, object_name: str, gripper_joint_regex: str) -> torch.Tensor:
-    """큐브가 손가락 사이에 없는데도 미리 주먹을 쥐고 다가가서 큐브를 치고 다니는 행위를 방지하는 페널티입니다."""
+    """바통의 목표 끄트머리가 손가락 사이에 없는데도(6cm 밖인데도) 미리 주먹을 쥐고 다가가서 큐브를 치고 다니는 행위를 방지하는 페널티입니다."""
     robot = env.scene[asset_name]
     obj = env.scene[object_name]
     
