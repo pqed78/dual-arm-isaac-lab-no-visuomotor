@@ -36,10 +36,23 @@ def pick_reach_object(env: ManagerBasedRLEnv, asset_name: str, pick_hand_regex: 
     # TCP (손끝 중앙) 위치 = 손목 위치 + 10.34cm * Z방향
     tcp_pos = wrist_pos + 0.1034 * z_dir
     
-    obj_pos = obj.data.root_pos_w
+    obj_pos = obj.data.root_pos_w.clone()
+    obj_quat = obj.data.root_quat_w
     
-    # TCP와 물체 사이의 거리를 계산합니다.
-    dist = torch.norm(tcp_pos - obj_pos, dim=-1)
+    # 큐브의 로컬 Z축(긴 축) 월드 벡터 계산
+    ow, ox, oy, oz = obj_quat[:, 0], obj_quat[:, 1], obj_quat[:, 2], obj_quat[:, 3]
+    cube_z_x = 2.0 * (ox * oz + ow * oy)
+    cube_z_y = 2.0 * (oy * oz - ow * ox)
+    cube_z_z = 1.0 - 2.0 * (ox * ox + oy * oy)
+    cube_z_dir = torch.stack([cube_z_x, cube_z_y, cube_z_z], dim=-1)
+    
+    # 오른팔은 큐브의 양 끝단 중 "오른팔 쪽(-Y 방향)"을 향해 뻗어 있는 끄트머리를 잡습니다.
+    # 25cm 바통이므로 중앙에서 8cm 떨어진 곳을 목표로 하여 여유 공간 확보.
+    sign_y = torch.sign(cube_z_dir[:, 1])
+    grab_pos = obj_pos - (sign_y.unsqueeze(-1) * 0.08 * cube_z_dir)
+    
+    # TCP와 목표 잡기 위치 사이의 거리를 계산합니다.
+    dist = torch.norm(tcp_pos - grab_pos, dim=-1)
     
     # 거리가 가까워질수록 1에 수렴하는 연속적인 보상
     # exp(-10*dist)를 사용하여 멀리서부터 부드럽게 이끌어줍니다.
@@ -152,10 +165,17 @@ def place_reach_object(env: ManagerBasedRLEnv, asset_name: str, place_hand_regex
     wait_pos[:, 1] += 0.1
     wait_pos[:, 2] += 0.1
     
-    # 잡기 위치: 큐브의 정중앙은 오른팔이 쥐고 있으므로, 왼팔은 큐브의 한쪽 끝부분(X=-0.04)을 겨냥하여 손가락 겹침 방지
-    # (큐브는 X축 방향으로 10cm 길쭉하게 누워있음)
-    grab_pos = obj_pos.clone()
-    grab_pos[:, 0] -= 0.04
+    # 잡기 위치: 큐브의 로컬 Z축(긴 축) 방향을 실시간으로 계산하여, 무조건 왼팔 쪽(+Y)으로 튀어나온 끄트머리를 겨냥합니다.
+    obj_quat = obj.data.root_quat_w
+    ow, ox, oy, oz = obj_quat[:, 0], obj_quat[:, 1], obj_quat[:, 2], obj_quat[:, 3]
+    cube_z_x = 2.0 * (ox * oz + ow * oy)
+    cube_z_y = 2.0 * (oy * oz - ow * ox)
+    cube_z_z = 1.0 - 2.0 * (ox * ox + oy * oy)
+    cube_z_dir = torch.stack([cube_z_x, cube_z_y, cube_z_z], dim=-1)
+    
+    sign_y = torch.sign(cube_z_dir[:, 1])
+    # 25cm 바통이므로, 중앙에서 왼팔 쪽(+Y)으로 8cm 떨어진 위치를 타겟팅.
+    grab_pos = obj_pos + (sign_y.unsqueeze(-1) * 0.08 * cube_z_dir)
     
     # [수정] 30cm 경계선에서 타겟이 순간이동하면 보상이 급락(Reward Cliff)하여 로봇이 경계선을 넘지 못하고 덜덜 떠는 문제(Shaking) 발생!
     # 따라서 큐브가 40cm에서 10cm 사이로 접근할 때 대기 위치에서 잡기 위치로 자석처럼 부드럽게 이끌리도록 연속적인 보간(Interpolation)을 사용합니다.

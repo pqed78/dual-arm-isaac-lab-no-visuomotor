@@ -40,12 +40,34 @@ def place_tcp_quat_w(env: ManagerBasedRLEnv, asset_name: str, place_hand_regex: 
 def object_to_pick_tcp_relative(env: ManagerBasedRLEnv, asset_name: str, pick_hand_regex: str, object_name: str) -> torch.Tensor:
     tcp_pos = pick_tcp_pos_w(env, asset_name, pick_hand_regex)
     obj = env.scene[object_name]
-    return obj.data.root_pos_w - tcp_pos
+    obj_pos = obj.data.root_pos_w
+    obj_quat = obj.data.root_quat_w
+    
+    ow, ox, oy, oz = obj_quat[:, 0], obj_quat[:, 1], obj_quat[:, 2], obj_quat[:, 3]
+    cube_z_x = 2.0 * (ox * oz + ow * oy)
+    cube_z_y = 2.0 * (oy * oz - ow * ox)
+    cube_z_z = 1.0 - 2.0 * (ox * ox + oy * oy)
+    cube_z_dir = torch.stack([cube_z_x, cube_z_y, cube_z_z], dim=-1)
+    
+    sign_y = torch.sign(cube_z_dir[:, 1])
+    grab_pos = obj_pos - (sign_y.unsqueeze(-1) * 0.08 * cube_z_dir)
+    return grab_pos - tcp_pos
 
 def object_to_place_tcp_relative(env: ManagerBasedRLEnv, asset_name: str, place_hand_regex: str, object_name: str) -> torch.Tensor:
     tcp_pos = place_tcp_pos_w(env, asset_name, place_hand_regex)
     obj = env.scene[object_name]
-    return obj.data.root_pos_w - tcp_pos
+    obj_pos = obj.data.root_pos_w
+    obj_quat = obj.data.root_quat_w
+    
+    ow, ox, oy, oz = obj_quat[:, 0], obj_quat[:, 1], obj_quat[:, 2], obj_quat[:, 3]
+    cube_z_x = 2.0 * (ox * oz + ow * oy)
+    cube_z_y = 2.0 * (oy * oz - ow * ox)
+    cube_z_z = 1.0 - 2.0 * (ox * ox + oy * oy)
+    cube_z_dir = torch.stack([cube_z_x, cube_z_y, cube_z_z], dim=-1)
+    
+    sign_y = torch.sign(cube_z_dir[:, 1])
+    grab_pos = obj_pos + (sign_y.unsqueeze(-1) * 0.08 * cube_z_dir)
+    return grab_pos - tcp_pos
 
 def object_to_target_relative(env: ManagerBasedRLEnv, object_name: str, target_name: str) -> torch.Tensor:
     obj = env.scene[object_name]
